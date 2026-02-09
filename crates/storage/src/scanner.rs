@@ -80,27 +80,20 @@ impl SessionScanner {
         sessions
     }
 
-    /// Check if a session's last message is an interruption.
-    pub fn is_session_interrupted(&self, session_id: &str) -> bool {
-        self.find_jsonl(session_id)
-            .map(|path| SessionReader::is_interrupted(&path))
-            .unwrap_or(false)
-    }
-
     /// Extract the first user prompt from a session's JSONL file.
     pub fn extract_first_prompt(&self, session_id: &str) -> Option<String> {
-        self.find_jsonl(session_id)
+        self.find_jsonl_path(session_id)
             .and_then(|path| SessionReader::extract_first_prompt(&path))
     }
 
     /// Find a session by ID across all projects.
     pub fn find_session(&self, session_id: &str) -> Option<ClaudeSession> {
-        let path = self.find_jsonl(session_id)?;
+        let path = self.find_jsonl_path(session_id)?;
         SessionReader::read_session_metadata(&path)
     }
 
-    /// Find the JSONL file for a session by scanning project directories.
-    fn find_jsonl(&self, session_id: &str) -> Option<PathBuf> {
+    /// Find the JSONL file path for a session by scanning project directories.
+    pub fn find_jsonl_path(&self, session_id: &str) -> Option<PathBuf> {
         let projects_dir = self.projects_dir();
         if !projects_dir.exists() {
             return None;

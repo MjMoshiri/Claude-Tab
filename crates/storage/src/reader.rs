@@ -4,7 +4,7 @@
 
 use crate::models::{ClaudeSession, SessionMessage};
 use std::fs::File;
-use std::io::{BufRead, BufReader, Read, Seek, SeekFrom};
+use std::io::{BufRead, BufReader};
 use std::path::Path;
 use tracing::warn;
 
@@ -126,28 +126,6 @@ impl SessionReader {
         Ok(messages)
     }
 
-    /// Read the last message from a JSONL file by seeking from the end.
-    pub fn read_last_message(jsonl_path: &Path) -> Option<SessionMessage> {
-        let mut file = File::open(jsonl_path).ok()?;
-        let file_len = file.metadata().ok()?.len();
-        if file_len == 0 {
-            return None;
-        }
-
-        // Read the last 32KB — more than enough for any single JSONL line
-        let read_from = file_len.saturating_sub(32768);
-        file.seek(SeekFrom::Start(read_from)).ok()?;
-
-        let mut buf = String::new();
-        file.read_to_string(&mut buf).ok()?;
-
-        // Find the last non-empty line
-        buf.lines()
-            .rev()
-            .find(|line| !line.trim().is_empty())
-            .and_then(|line| serde_json::from_str::<SessionMessage>(line).ok())
-    }
-
     /// Extract the first user prompt text from a JSONL file.
     pub fn extract_first_prompt(jsonl_path: &Path) -> Option<String> {
         let file = File::open(jsonl_path).ok()?;
@@ -173,36 +151,6 @@ impl SessionReader {
             }
         }
         None
-    }
-
-    /// Check if the last message in a JSONL file is an interruption.
-    pub fn is_interrupted(jsonl_path: &Path) -> bool {
-        let msg = match Self::read_last_message(jsonl_path) {
-            Some(m) => m,
-            None => return false,
-        };
-
-        if msg.message_type != "user" {
-            return false;
-        }
-
-        let content = match msg.content() {
-            Some(c) => c,
-            None => return false,
-        };
-
-        // Content can be a string or array of content blocks
-        match content {
-            serde_json::Value::String(s) => s.starts_with("[Request interrupted by user"),
-            serde_json::Value::Array(arr) => arr.iter().any(|item| {
-                item.get("type").and_then(|t| t.as_str()) == Some("text")
-                    && item
-                        .get("text")
-                        .and_then(|t| t.as_str())
-                        .map_or(false, |t| t.starts_with("[Request interrupted by user"))
-            }),
-            _ => false,
-        }
     }
 
     /// Stream messages from a JSONL file (lazy iterator).
@@ -244,12 +192,28 @@ impl SessionReader {
     }
 
     /// Check if a message is system noise that should not be used as a title.
+    ///
+    /// Filters out Claude Code injected XML tags (system-reminder, local-command-*,
+    /// command-name, etc.) and interrupt markers.
     fn is_system_noise(text: &str) -> bool {
         let trimmed = text.trim_start();
         trimmed.starts_with("[Request interrupted")
-            || trimmed.starts_with("<system-reminder>")
-            || trimmed.starts_with("<local-command-caveat>")
-            || trimmed.starts_with("<command-name>")
+            || Self::starts_with_xml_tag(trimmed)
+    }
+
+    /// Check if text starts with an XML-like tag (e.g. `<foo>`, `<foo-bar>`).
+    fn starts_with_xml_tag(text: &str) -> bool {
+        let bytes = text.as_bytes();
+        if bytes.first() != Some(&b'<') || bytes.get(1) == Some(&b' ') {
+            return false;
+        }
+        // Look for closing '>' within the first 60 chars
+        text[1..text.len().min(60)]
+            .find('>')
+            .map_or(false, |i| {
+                // Ensure contents between < and > look like a tag name (letters, dashes, underscores)
+                text[1..=i].trim_end_matches('/').chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+            })
     }
 
     /// Extract plain text from message content.

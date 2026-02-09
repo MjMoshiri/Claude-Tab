@@ -1,7 +1,6 @@
 use crate::event_bus::EventBus;
 use crate::session::SessionStore;
 use crate::state_machine::{SessionState, StateMachine};
-use claude_tabs_storage::SessionScanner;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -457,31 +456,10 @@ impl HookListener {
         );
         event_bus.emit(hook_event).await;
 
-        // For Stop events, check JSONL to distinguish user interrupt from natural completion.
-        // Small delay: the Stop hook can fire before Claude Code flushes the
-        // interruption message to the JSONL file.
-        let action = if msg.hook_event_name == "Stop" {
-            tokio::time::sleep(Duration::from_millis(300)).await;
-
-            let is_interrupted = msg
-                .claude_session_id
-                .as_deref()
-                .filter(|sid| !sid.is_empty())
-                .and_then(|sid| {
-                    SessionScanner::new()
-                        .ok()
-                        .map(|scanner| scanner.is_session_interrupted(sid))
-                })
-                .unwrap_or(false);
-
-            if is_interrupted {
-                HookAction::Transition(SessionState::Paused, "hook.Stop.interrupted")
-            } else {
-                HookAction::Transition(SessionState::Active, "hook.Stop")
-            }
-        } else {
-            Self::resolve_action(&msg)
-        };
+        // Interrupt detection is handled by the JSONL tailer (polls file changes).
+        // The Stop hook just transitions to Active; the tailer will override to
+        // Paused if it sees an interrupt marker in the JSONL.
+        let action = Self::resolve_action(&msg);
 
         match action {
             HookAction::Transition(new_state, trigger) => {

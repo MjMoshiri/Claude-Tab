@@ -5,7 +5,7 @@ use claude_tabs_core::profile::ProfileStore;
 use claude_tabs_core::session::SessionStore;
 use claude_tabs_core::state_machine::{SessionState, StateMachine};
 use claude_tabs_pty::{OutputStream, PtyManager};
-use claude_tabs_storage::{SessionScanner, SqliteBackend};
+use claude_tabs_storage::{JsonlTailer, SessionScanner, SqliteBackend};
 use claude_tabs_tauri_bridge::commands;
 use claude_tabs_tauri_bridge::ipc::{AppState, IpcBridge};
 use std::sync::Arc;
@@ -287,51 +287,93 @@ pub fn run() {
                 });
             }
 
-            // State reconciliation task: verify PTY liveness, persist state, detect interrupts
+            // JSONL watcher: detect interrupts instantly via filesystem events.
+            // Watches ~/.claude/projects/ recursively; sessions are registered on hook events.
+            if let Some(mut tailer) = JsonlTailer::new() {
+                // Task 1: Register sessions on hook events, unregister on close
+                let tailer_ref = tailer.share();
+                let ss_reg = ss.clone();
+                let scanner_reg = scanner.clone();
+                let mut lifecycle_rx = eb.receiver();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        match lifecycle_rx.recv().await {
+                            Ok(event) => {
+                                let session_id = event.payload.get("session_id")
+                                    .and_then(|v| v.as_str()).unwrap_or("");
+                                if session_id.is_empty() { continue; }
+
+                                match event.topic.as_str() {
+                                    t if t.starts_with("hook.") => {
+                                        if tailer_ref.is_registered(session_id) { continue; }
+                                        if let Some(session) = ss_reg.get(session_id).await {
+                                            if let Some(claude_sid) = session.metadata
+                                                .get("claude_session_id")
+                                                .and_then(|v| v.as_str())
+                                            {
+                                                if let Some(path) = scanner_reg.find_jsonl_path(claude_sid) {
+                                                    tailer_ref.register(session_id, path);
+                                                }
+                                            }
+                                        }
+                                    }
+                                    "session.closed" => {
+                                        tailer_ref.unregister(session_id);
+                                    }
+                                    _ => {}
+                                }
+                            }
+                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                        }
+                    }
+                });
+
+                // Task 2: Process interrupt events from the watcher
+                let sm_tail = state_machine.clone();
+                let eb_tail = eb.clone();
+                tauri::async_runtime::spawn(async move {
+                    while let Some((session_id, _event)) = tailer.recv().await {
+                        match sm_tail
+                            .transition_session(&session_id, SessionState::Paused, "jsonl.interrupted")
+                            .await
+                        {
+                            Ok(transition) => {
+                                let ev = claude_tabs_core::Event::new(
+                                    "session.state_changed",
+                                    serde_json::json!({
+                                        "session_id": session_id,
+                                        "from": transition.from.as_str(),
+                                        "to": "paused",
+                                    }),
+                                );
+                                eb_tail.emit(ev).await;
+                                info!(session_id = %session_id, "Interrupt detected via JSONL watcher");
+                            }
+                            Err(e) => {
+                                debug!(session_id = %session_id, error = %e, "Interrupt transition skipped");
+                            }
+                        }
+                    }
+                });
+                info!("JSONL watcher started");
+            } else {
+                warn!("JSONL watcher not started (projects directory not found)");
+            }
+
+            // State reconciliation task: verify PTY liveness, persist state to DB
             {
                 let ss_recon = ss.clone();
                 let eb_recon = eb.clone();
                 let sm_recon = state_machine.clone();
                 let pm_recon = pty_manager.clone();
                 let storage_recon = storage.clone();
-                let scanner_recon = Arc::new(SessionScanner::new().expect("HOME environment variable must be set"));
                 tauri::async_runtime::spawn(async move {
                     loop {
                         tokio::time::sleep(std::time::Duration::from_secs(15)).await;
 
                         let sessions = ss_recon.list().await;
                         for session in &sessions {
-                            // Interrupt detection: check JSONL for Running sessions
-                            if session.state == SessionState::Running {
-                                if let Some(claude_sid) = session.metadata.get("claude_session_id")
-                                    .and_then(|v| v.as_str())
-                                {
-                                    if scanner_recon.is_session_interrupted(claude_sid) {
-                                        match sm_recon
-                                            .transition_session(&session.id, SessionState::Paused, "jsonl.interrupted")
-                                            .await
-                                        {
-                                            Ok(transition) => {
-                                                let event = claude_tabs_core::Event::new(
-                                                    "session.state_changed",
-                                                    serde_json::json!({
-                                                        "session_id": session.id,
-                                                        "from": transition.from.as_str(),
-                                                        "to": "paused",
-                                                    }),
-                                                );
-                                                eb_recon.emit(event).await;
-                                                info!(session_id = %session.id, "Detected interrupt from JSONL");
-                                            }
-                                            Err(e) => {
-                                                debug!(session_id = %session.id, error = %e, "Interrupt transition skipped");
-                                            }
-                                        }
-                                        continue; // Skip further checks for this session
-                                    }
-                                }
-                            }
-
                             // Check PTY liveness
                             if !pm_recon.is_alive(&session.id)
                                 && matches!(session.state, SessionState::Running | SessionState::YourTurn | SessionState::Paused)
@@ -371,7 +413,6 @@ pub fn run() {
                                     m.last_known_state = Some(session.state.as_str().to_string());
                                     m
                                 } else {
-                                    // Create record if it doesn't exist yet
                                     claude_tabs_storage::SessionMetadata {
                                         claude_session_id: claude_sid.to_string(),
                                         project_path: session.working_directory.clone().unwrap_or_default(),

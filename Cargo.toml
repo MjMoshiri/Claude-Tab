@@ -28,6 +28,7 @@ toml = "0.8"
 regex = "1"
 chrono = { version = "0.4", features = ["serde"] }
 portable-pty = "0.8"
+notify = { version = "7", default-features = false, features = ["macos_kqueue"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
 tauri = { version = "2", features = [] }
 tauri-build = "2"
