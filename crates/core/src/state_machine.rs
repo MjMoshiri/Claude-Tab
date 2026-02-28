@@ -12,6 +12,7 @@ pub enum SessionState {
     YourTurn,
     Paused,
     Idle,
+    Completed,
 }
 
 impl SessionState {
@@ -22,6 +23,7 @@ impl SessionState {
             SessionState::YourTurn => "Your Turn",
             SessionState::Paused => "Paused",
             SessionState::Idle => "Idle",
+            SessionState::Completed => "Completed",
         }
     }
 
@@ -32,6 +34,7 @@ impl SessionState {
             SessionState::YourTurn => "#ff9800",
             SessionState::Paused => "#ff5722",
             SessionState::Idle => "#808080",
+            SessionState::Completed => "#FFD60A",
         }
     }
 
@@ -42,6 +45,7 @@ impl SessionState {
             SessionState::YourTurn => "your_turn",
             SessionState::Paused => "paused",
             SessionState::Idle => "idle",
+            SessionState::Completed => "completed",
         }
     }
 }
@@ -96,8 +100,14 @@ impl StateMachine {
             | (Running, YourTurn)
             // Running -> Paused (interrupt)
             | (Running, Paused)
-            // Running -> Active (Stop hook)
+            // Running -> Completed (Stop hook — Claude finished its turn)
+            | (Running, Completed)
+            // Running -> Active (stale recovery — no hooks for 5 min)
             | (Running, Active)
+            // Completed -> Running (user submits prompt)
+            | (Completed, Running)
+            // Completed -> Active (user visits tab / SessionStart)
+            | (Completed, Active)
             // YourTurn -> Running (user submits prompt)
             | (YourTurn, Running)
             // Paused -> Running (user submits prompt)
@@ -107,6 +117,7 @@ impl StateMachine {
             | (Running, Idle)
             | (YourTurn, Idle)
             | (Paused, Idle)
+            | (Completed, Idle)
             // Idle -> Active (visit/focus)
             | (Idle, Active)
             // Any -> Active (SessionStart)

@@ -1,15 +1,18 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { FrontendExtension } from "../../types/extension";
-import { SessionInfo } from "../../types/session";
+import { SessionInfo, WorktreeInfo } from "../../types/session";
 import { SLOTS } from "../../types/slots";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
+import { open, confirm } from "@tauri-apps/plugin-dialog";
 import { SearchBar } from "./SearchBar";
 import { HistorySection } from "./HistorySection";
 import { ClaudeSession } from "./types";
 import { toggleSettings } from "../settings";
 import { toggleProfiles } from "../profiles";
+import { SkillPicker } from "../profiles/SkillPicker";
+import { McpPicker } from "../profiles/McpPicker";
+import { SystemPromptPicker } from "../profiles/SystemPromptPicker";
 
 const MIN_WIDTH = 150;
 const MAX_WIDTH = 400;
@@ -34,6 +37,7 @@ const STATE_COLORS: Record<string, string> = {
   active: "var(--green, #30D158)",
   running: "var(--accent, #0A84FF)",
   your_turn: "var(--orange, #FF9F0A)",
+  completed: "var(--yellow, #FFD60A)",
   paused: "var(--red, #FF453A)",
   idle: "var(--text-tertiary, #666)",
 };
@@ -42,6 +46,7 @@ const STATE_LABELS: Record<string, string> = {
   active: "Active",
   running: "Running",
   your_turn: "Your Turn",
+  completed: "Completed",
   paused: "Paused",
   idle: "Idle",
 };
@@ -352,6 +357,13 @@ function SidePanel() {
   const [showTitlePrompt, setShowTitlePrompt] = useState(false);
   const [pendingDir, setPendingDir] = useState<string | null>(null);
   const [titleInput, setTitleInput] = useState("");
+  const [useWorktree, setUseWorktree] = useState(false);
+  const [worktreeBranch, setWorktreeBranch] = useState("");
+  const [isGitRepo, setIsGitRepo] = useState(false);
+  const [creatingSession, setCreatingSession] = useState(false);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string> | null>(null);
+  const [disabledMcps, setDisabledMcps] = useState<Set<string>>(new Set());
+  const [systemPromptFile, setSystemPromptFile] = useState<string | null>(null);
 
   const handleNewTab = async () => {
     const dir = await open({
@@ -362,29 +374,134 @@ function SidePanel() {
     const dirName = dir.split("/").filter(Boolean).pop() || dir;
     setPendingDir(dir);
     setTitleInput(dirName);
+    setUseWorktree(false);
+    setWorktreeBranch("");
+    setSelectedSkills(null);
+    setDisabledMcps(new Set());
+    setSystemPromptFile(null);
+
+    // Load all skills and default to all selected
+    invoke<{ name: string }[]>("list_available_skills")
+      .then((skills) => setSelectedSkills(new Set(skills.map((s) => s.name))))
+      .catch(() => setSelectedSkills(new Set()));
+
+    // Check if directory is a git repo
+    try {
+      const gitRepo = await invoke<boolean>("check_git_repo", { path: dir });
+      setIsGitRepo(gitRepo);
+    } catch {
+      setIsGitRepo(false);
+    }
+
     setShowTitlePrompt(true);
   };
 
+  // Listen for new-tab trigger from Cmd+T keybinding
+  useEffect(() => {
+    const handler = () => { handleNewTab(); };
+    window.addEventListener("tab-bar:new-tab-trigger", handler);
+    return () => window.removeEventListener("tab-bar:new-tab-trigger", handler);
+  }, []);
+
   const handleTitleSubmit = async () => {
-    if (!pendingDir) return;
-    const title = titleInput.trim() || pendingDir.split("/").filter(Boolean).pop() || pendingDir;
-    await invoke("create_session", {
-      request: {
-        provider_id: "claude-code",
-        title,
-        working_directory: pendingDir,
-      },
-    });
-    setShowTitlePrompt(false);
-    setPendingDir(null);
-    setTitleInput("");
+    if (!pendingDir || creatingSession) return;
+    setCreatingSession(true);
+
+    try {
+      const title = titleInput.trim() || pendingDir.split("/").filter(Boolean).pop() || pendingDir;
+      let workingDir = pendingDir;
+      let metadata: Record<string, unknown> | undefined;
+
+      if (useWorktree && isGitRepo) {
+        const branch = worktreeBranch.trim() || undefined;
+        const wt = await invoke<WorktreeInfo>("create_worktree", {
+          repoPath: pendingDir,
+          branchName: branch,
+        });
+        workingDir = wt.path;
+        metadata = {
+          worktree_path: wt.path,
+          worktree_branch: wt.branch,
+          worktree_repo: wt.repo_path,
+        };
+      }
+
+      // Sync selected skills before creating session
+      if (selectedSkills && selectedSkills.size > 0) {
+        await invoke("sync_skills", { skills: [...selectedSkills] });
+      }
+
+      await invoke("create_session", {
+        request: {
+          provider_id: "claude-code",
+          title,
+          working_directory: workingDir,
+          disabled_mcps: disabledMcps.size > 0 ? [...disabledMcps] : undefined,
+          system_prompt_file: systemPromptFile || undefined,
+          metadata,
+        },
+      });
+
+      setShowTitlePrompt(false);
+      setPendingDir(null);
+      setTitleInput("");
+      setUseWorktree(false);
+      setWorktreeBranch("");
+      setIsGitRepo(false);
+      setSelectedSkills(null);
+      setDisabledMcps(new Set());
+      setSystemPromptFile(null);
+    } catch (err) {
+      console.error("[SidePanel] Session creation failed:", err);
+    } finally {
+      setCreatingSession(false);
+    }
   };
 
   const handleTitleCancel = () => {
     setShowTitlePrompt(false);
     setPendingDir(null);
     setTitleInput("");
+    setUseWorktree(false);
+    setWorktreeBranch("");
+    setIsGitRepo(false);
+    setSelectedSkills(null);
+    setDisabledMcps(new Set());
+    setSystemPromptFile(null);
   };
+
+  // Worktree cleanup listener
+  useEffect(() => {
+    let mounted = true;
+    const unsubs: Array<() => void> = [];
+
+    listen<{ topic: string; payload: Record<string, unknown> }>("core-event", async (e) => {
+      if (!mounted) return;
+      const { topic, payload } = e.payload;
+      if (topic !== "session.worktree_cleanup") return;
+
+      const wtPath = payload.worktree_path as string;
+      const wtBranch = payload.worktree_branch as string;
+
+      const shouldRemove = await confirm(
+        `Remove worktree "${wtBranch}"?\n\nPath: ${wtPath}`,
+        { title: "Worktree Cleanup", kind: "warning" }
+      );
+
+      if (shouldRemove) {
+        try {
+          await invoke("remove_worktree", { worktreePath: wtPath });
+        } catch (err) {
+          console.error("[SidePanel] Worktree removal failed:", err);
+        }
+      }
+    }).then((u) => {
+      if (!mounted) { u(); return; }
+      unsubs.push(u);
+    });
+
+    return () => { mounted = false; unsubs.forEach((u) => u()); };
+  }, []);
 
   const handleNewTerminal = async () => {
     await invoke("create_session", {
@@ -482,7 +599,7 @@ function SidePanel() {
     return acc;
   }, {});
 
-  const groupOrder = ["your_turn", "running", "active", "paused", "idle"];
+  const groupOrder = ["your_turn", "completed", "running", "active", "paused", "idle"];
   const sortedGroups = Object.entries(groups).sort(([a], [b]) => {
     const ai = groupOrder.indexOf(a);
     const bi = groupOrder.indexOf(b);
@@ -627,19 +744,78 @@ function SidePanel() {
         <HistorySection onResume={handleResume} onFork={handleFork} />
       </div>
       {showTitlePrompt && (
-        <div className="side-panel-title-prompt">
+        <div className="session-create-dialog">
           <input
             className="side-panel-rename-input"
             value={titleInput}
             onChange={(e) => setTitleInput(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter") handleTitleSubmit();
+              if (e.key === "Enter" && !e.shiftKey) handleTitleSubmit();
               else if (e.key === "Escape") handleTitleCancel();
             }}
             placeholder="Session title..."
             autoFocus
             aria-label="New session title"
           />
+          {isGitRepo && (
+            <div className="session-create-worktree">
+              <label className="session-create-checkbox">
+                <input
+                  type="checkbox"
+                  checked={useWorktree}
+                  onChange={(e) => setUseWorktree(e.target.checked)}
+                />
+                Use worktree
+              </label>
+              {useWorktree && (
+                <input
+                  className="side-panel-rename-input"
+                  value={worktreeBranch}
+                  onChange={(e) => setWorktreeBranch(e.target.value)}
+                  placeholder="Branch name (auto-generated if empty)"
+                  aria-label="Worktree branch name"
+                />
+              )}
+            </div>
+          )}
+          {selectedSkills !== null && (
+            <div className="session-create-skills">
+              <label className="session-create-skills-label">Skills</label>
+              <SkillPicker
+                selectedSkills={selectedSkills}
+                onSelectionChange={setSelectedSkills}
+              />
+            </div>
+          )}
+          <div className="session-create-mcps">
+            <label className="session-create-mcps-label">MCP Servers</label>
+            <McpPicker
+              disabledMcps={disabledMcps}
+              onDisabledChange={setDisabledMcps}
+            />
+          </div>
+          <div className="session-create-system-prompt">
+            <label className="session-create-system-prompt-label">System Prompt</label>
+            <SystemPromptPicker
+              selected={systemPromptFile}
+              onSelect={setSystemPromptFile}
+            />
+          </div>
+          <div className="session-create-actions">
+            <button
+              className="session-create-cancel"
+              onClick={handleTitleCancel}
+            >
+              Cancel
+            </button>
+            <button
+              className="session-create-submit"
+              onClick={handleTitleSubmit}
+              disabled={creatingSession}
+            >
+              {creatingSession ? "Creating..." : "Create"}
+            </button>
+          </div>
         </div>
       )}
       {contextMenu && (
@@ -795,20 +971,8 @@ export function createTabBarExtension(): FrontendExtension {
         keys: "Cmd+T",
         label: "New Session",
         extensionId: "tab-bar",
-        handler: async () => {
-          const dir = await open({
-            title: "Select Working Directory",
-            directory: true,
-          });
-          if (!dir) return;
-          const dirName = dir.split("/").filter(Boolean).pop() || dir;
-          await invoke("create_session", {
-            request: {
-              provider_id: "claude-code",
-              title: dirName,
-              working_directory: dir,
-            },
-          });
+        handler: () => {
+          window.dispatchEvent(new Event("tab-bar:new-tab-trigger"));
         },
       });
 

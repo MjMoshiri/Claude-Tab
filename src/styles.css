@@ -223,18 +223,6 @@
 }
 
 /* ============================================================
-   Terminal Panel
-   ============================================================ */
-
-.terminal-panel {
-  background: var(--terminal-bg);
-}
-
-.terminal-panel .xterm {
-  padding: var(--space-1);
-}
-
-/* ============================================================
    Status Bar
    ============================================================ */
 
@@ -2008,4 +1996,396 @@
 
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.25);
+}
+
+/* ============================================================
+   Session Creation Dialog (Worktree integration)
+   ============================================================ */
+
+.session-create-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.session-create-worktree {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.session-create-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.session-create-checkbox input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.session-create-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-1);
+}
+
+.session-create-cancel {
+  padding: 4px 10px;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.session-create-cancel:hover {
+  border-color: var(--border-prominent);
+  color: var(--text-primary);
+}
+
+.session-create-submit {
+  padding: 4px 10px;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: #fff;
+  font-size: 11px;
+  font-family: var(--font-ui);
+  cursor: pointer;
+}
+
+.session-create-submit:hover {
+  background: var(--accent-hover);
+}
+
+.session-create-submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ============================================================
+   Skill Picker (shared: profile editor + new-tab dialog)
+   ============================================================ */
+
+.skill-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: var(--space-1);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.skill-picker-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 4px var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.skill-picker-group-header:hover {
+  background: var(--hover-bg);
+}
+
+.skill-picker-group-header input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.skill-picker-group-name {
+  flex: 1;
+}
+
+.skill-picker-group-count {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-tertiary);
+}
+
+.skill-picker-chevron {
+  font-size: 10px;
+  color: var(--text-tertiary);
+  transition: transform var(--transition-fast);
+}
+
+.skill-picker-chevron.collapsed {
+  transform: rotate(-90deg);
+}
+
+.skill-picker-group-items {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: var(--space-4);
+}
+
+.skill-picker-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-1);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.skill-picker-item:hover {
+  background: var(--hover-bg);
+}
+
+.skill-picker-item input[type="checkbox"] {
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+/* --- Skill picker in new-tab dialog --- */
+
+.session-create-skills {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.session-create-skills-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* --- MCP picker type badge --- */
+
+.mcp-picker-type-badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+/* --- MCP picker in new-tab dialog --- */
+
+.session-create-mcps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.session-create-mcps-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* --- System prompt picker --- */
+
+.system-prompt-picker {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.system-prompt-picker-select {
+  background: var(--bg-input);
+  color: var(--text-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: var(--space-1) var(--space-2);
+  font-size: 12px;
+  font-family: var(--font-ui);
+  outline: none;
+}
+
+.system-prompt-picker-select:focus {
+  border-color: var(--accent);
+}
+
+.system-prompt-picker-preview {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  white-space: pre-wrap;
+  max-height: 60px;
+  overflow: hidden;
+}
+
+/* --- System prompt picker in new-tab dialog --- */
+
+.session-create-system-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.session-create-system-prompt-label {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+/* ============================================================
+   Settings — Skill Groups Editor
+   ============================================================ */
+
+.settings-skill-groups {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+}
+
+.settings-skill-group-row {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.settings-skill-group-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px var(--space-2);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--transition-fast);
+}
+
+.settings-skill-group-header:hover {
+  background: var(--hover-bg);
+}
+
+.settings-skill-group-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.settings-skill-group-count {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.settings-skill-group-delete {
+  background: none;
+  border: none;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color var(--transition-fast);
+}
+
+.settings-skill-group-delete:hover {
+  color: var(--red);
+}
+
+.settings-skill-group-skills {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: var(--space-1) var(--space-2) var(--space-2) var(--space-4);
+  max-height: 160px;
+  overflow-y: auto;
+  background: var(--bg-input);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-skill-group-new {
+  display: flex;
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.settings-skill-group-name-input {
+  flex: 1;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  padding: 4px 8px;
+  font-family: var(--font-ui);
+}
+
+.settings-skill-group-name-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.settings-skill-group-add-confirm,
+.settings-skill-group-add-cancel {
+  background: none;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.settings-skill-group-add-confirm:hover {
+  background: var(--accent);
+  color: white;
+  border-color: var(--accent);
+}
+
+.settings-skill-group-add-confirm:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-skill-group-add-cancel:hover {
+  border-color: var(--border-prominent);
+}
+
+.settings-skill-group-add-btn {
+  background: none;
+  border: 1px dashed var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  padding: 6px;
+  cursor: pointer;
+  text-align: center;
+  transition: all var(--transition-fast);
+}
+
+.settings-skill-group-add-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
 }

@@ -7,7 +7,7 @@ import type { IFocusManager } from "../../types/kernel";
  * Window Focus Extension
  *
  * Brings the app window to the front and requests user attention
- * when a session transitions to "your_turn" state.
+ * when a session transitions to "your_turn" or "completed" state.
  *
  * Uses the centralized FocusManager for all focus operations,
  * which provides native platform-specific focus (bypassing Tauri's buggy APIs on macOS).
@@ -36,10 +36,11 @@ export function createWindowFocusExtension(): FrontendExtension {
 
           if (topic === "session.state_changed") {
             const toState = payload.to as string;
+            const sessionId = payload.session_id as string;
 
-            // Only act on transitions TO your_turn state
-            if (toState === "your_turn") {
-              await handleYourTurn();
+            // Act on transitions to states that need user attention
+            if ((toState === "your_turn" || toState === "completed") && sessionId) {
+              await handleNeedsAttention(sessionId);
             }
           }
         }
@@ -59,7 +60,7 @@ export function createWindowFocusExtension(): FrontendExtension {
   };
 }
 
-async function handleYourTurn() {
+async function handleNeedsAttention(sessionId: string) {
   if (!focusManager) return;
 
   // Check if window auto-focus is enabled
@@ -70,6 +71,9 @@ async function handleYourTurn() {
   if (focusManager.isWindowFocused) return;
 
   try {
+    // Switch to the session that needs attention
+    await invoke("set_active_session", { sessionId });
+
     // Request user attention (bounces dock icon on macOS, flashes taskbar on Windows)
     await focusManager.requestAttention(true);
 
@@ -77,14 +81,12 @@ async function handleYourTurn() {
     await focusManager.focusWindow();
 
     // Aggressive mode: temporarily set always-on-top to force focus
-    // This is a fallback in case native focus doesn't work
     const aggressiveMode = getConfigValue("autoFocus.aggressiveMode", false);
     if (aggressiveMode) {
       try {
         const { Window } = await import("@tauri-apps/api/window");
         const appWindow = Window.getCurrent();
         await appWindow.setAlwaysOnTop(true);
-        // Small delay then disable to avoid staying on top
         setTimeout(async () => {
           try {
             await appWindow.setAlwaysOnTop(false);

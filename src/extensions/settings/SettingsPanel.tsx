@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import type { IKeybindingManager, KeybindingDefinition } from "../../types/kernel";
 import { useConfig } from "../../kernel/ConfigProvider";
+import { invoke } from "@tauri-apps/api/core";
+import { SkillInfo } from "../../types/profile";
 
 let settingsBindings: KeybindingDefinition[] = [];
 let showSettings = false;
@@ -173,6 +175,150 @@ function KeyRecorder({
   );
 }
 
+type SkillGroups = Record<string, string[]>;
+
+function SkillGroupsEditor() {
+  const config = useConfig();
+  const groups: SkillGroups = config.get<SkillGroups>("skillGroups", {});
+  const [allSkills, setAllSkills] = useState<SkillInfo[]>([]);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [showNewInput, setShowNewInput] = useState(false);
+  const newInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    invoke<SkillInfo[]>("list_available_skills")
+      .then(setAllSkills)
+      .catch((err) => console.error("[SkillGroups] Failed to load skills:", err));
+  }, []);
+
+  useEffect(() => {
+    if (showNewInput && newInputRef.current) {
+      newInputRef.current.focus();
+    }
+  }, [showNewInput]);
+
+  const saveGroups = useCallback((updated: SkillGroups) => {
+    config.set("skillGroups", updated);
+  }, [config]);
+
+  const handleAddGroup = () => {
+    const name = newGroupName.trim();
+    if (!name || name in groups) return;
+    saveGroups({ ...groups, [name]: [] });
+    setNewGroupName("");
+    setShowNewInput(false);
+    setEditingGroup(name);
+  };
+
+  const handleDeleteGroup = (name: string) => {
+    const updated = { ...groups };
+    delete updated[name];
+    saveGroups(updated);
+    if (editingGroup === name) setEditingGroup(null);
+  };
+
+  const toggleSkillInGroup = (groupName: string, skillName: string) => {
+    const current = groups[groupName] || [];
+    const updated = current.includes(skillName)
+      ? current.filter((s) => s !== skillName)
+      : [...current, skillName];
+    saveGroups({ ...groups, [groupName]: updated });
+  };
+
+  const groupNames = Object.keys(groups).sort();
+
+  return (
+    <div className="settings-skill-groups">
+      {groupNames.length === 0 && !showNewInput && (
+        <span className="settings-item-desc" style={{ padding: "4px 0" }}>
+          No groups yet. Create one to quickly select skills.
+        </span>
+      )}
+      {groupNames.map((name) => {
+        const skills = groups[name] || [];
+        const isEditing = editingGroup === name;
+        return (
+          <div key={name} className="settings-skill-group-row">
+            <div
+              className="settings-skill-group-header"
+              onClick={() => setEditingGroup(isEditing ? null : name)}
+            >
+              <span className={`skill-picker-chevron ${!isEditing ? "collapsed" : ""}`}>
+                &#9662;
+              </span>
+              <span className="settings-skill-group-name">{name}</span>
+              <span className="settings-skill-group-count">
+                {skills.length} skill{skills.length !== 1 ? "s" : ""}
+              </span>
+              <button
+                className="settings-skill-group-delete"
+                onClick={(e) => { e.stopPropagation(); handleDeleteGroup(name); }}
+                title="Delete group"
+              >
+                &times;
+              </button>
+            </div>
+            {isEditing && (
+              <div className="settings-skill-group-skills">
+                {allSkills.length === 0 ? (
+                  <span className="settings-item-desc">No skills available</span>
+                ) : (
+                  allSkills.map((skill) => (
+                    <label key={skill.name} className="skill-picker-item">
+                      <input
+                        type="checkbox"
+                        checked={skills.includes(skill.name)}
+                        onChange={() => toggleSkillInGroup(name, skill.name)}
+                      />
+                      <span>{skill.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {showNewInput ? (
+        <div className="settings-skill-group-new">
+          <input
+            ref={newInputRef}
+            className="settings-skill-group-name-input"
+            value={newGroupName}
+            onChange={(e) => setNewGroupName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") handleAddGroup();
+              else if (e.key === "Escape") { setShowNewInput(false); setNewGroupName(""); }
+            }}
+            placeholder="Group name..."
+          />
+          <button
+            className="settings-skill-group-add-confirm"
+            onClick={handleAddGroup}
+            disabled={!newGroupName.trim() || newGroupName.trim() in groups}
+          >
+            Add
+          </button>
+          <button
+            className="settings-skill-group-add-cancel"
+            onClick={() => { setShowNewInput(false); setNewGroupName(""); }}
+          >
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button
+          className="settings-skill-group-add-btn"
+          onClick={() => setShowNewInput(true)}
+        >
+          + New Group
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel() {
   const [visible, setVisible] = useState(false);
   const [bindings, setBindings] = useState<KeybindingDefinition[]>([]);
@@ -335,6 +481,12 @@ export function SettingsPanel() {
               max={120}
               suffix="min"
             />
+          </div>
+
+          {/* Skill Groups Section */}
+          <div className="settings-panel-section">Skill Groups</div>
+          <div className="settings-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+            <SkillGroupsEditor />
           </div>
 
           {/* Keyboard Shortcuts Section */}

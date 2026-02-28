@@ -8,6 +8,7 @@ const CONFIG_DEFAULTS: Record<string, unknown> = {
   "autoFocus.tabAutoSwitch": true,
   "autoFocus.inactivitySeconds": 5,
   "autoFocus.countdownSeconds": 3,
+  "skillGroups": {},
 };
 
 interface ConfigContextValue {

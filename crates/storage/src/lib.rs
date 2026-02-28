@@ -11,7 +11,6 @@ pub mod models;
 pub mod reader;
 pub mod scanner;
 pub mod sqlite;
-pub mod tailer;
 pub mod traits;
 
 // Re-export public API
@@ -19,7 +18,6 @@ pub use models::{ClaudeSession, DirectoryPreference, MessagePayload, SessionFilt
 pub use reader::SessionReader;
 pub use scanner::SessionScanner;
 pub use sqlite::SqliteBackend;
-pub use tailer::{JsonlTailer, TailerHandle};
 pub use traits::StorageBackend;
 
 use thiserror::Error;

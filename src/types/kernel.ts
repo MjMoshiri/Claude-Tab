@@ -186,8 +186,7 @@ export type SwitchState =
   | "idle"
   | "checking_inactivity"
   | "showing_toast"
-  | "switching"
-  | "cooldown";
+  | "switching";
 
 export interface ToastState {
   readonly targetSessionId: string;
@@ -197,6 +196,11 @@ export interface ToastState {
 
 /**
  * State machine for session switching to prevent race conditions.
+ *
+ * Tracks "seen" sessions — once a user acknowledges a your_turn session
+ * (by dismissing the toast, visiting the tab, or completing the switch),
+ * that session won't be re-offered until its state cycles through a
+ * non-your_turn state and back.
  */
 export interface ISessionStateManager {
   /** Current state machine state */
@@ -204,9 +208,6 @@ export interface ISessionStateManager {
 
   /** Current toast state (if showing) */
   readonly toastState: ToastState | null;
-
-  /** Session IDs that user has declined */
-  readonly declinedSessionIds: ReadonlySet<string>;
 
   /** Initialize the manager */
   init(): Promise<void>;
@@ -220,14 +221,11 @@ export interface ISessionStateManager {
   /** Check inactivity and potentially trigger toast */
   checkInactivity(inactivitySeconds: number): void;
 
-  /** Decline the current toast */
-  decline(): void;
-
   /** Complete the switch (toast countdown finished) */
   completeSwitch(): Promise<void>;
 
-  /** Cancel the toast without declining */
-  cancelToast(): void;
+  /** Dismiss the toast and mark session as seen */
+  dismissToast(): void;
 
   /** Subscribe to state changes */
   subscribe(listener: (state: SwitchState, toast: ToastState | null) => void): () => void;

@@ -11,5 +11,4 @@ async-trait = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
-notify = { workspace = true }
 rusqlite = { version = "0.31", features = ["bundled"] }

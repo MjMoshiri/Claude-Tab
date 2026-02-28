@@ -1,5 +1,8 @@
 import { useState } from "react";
 import { Profile, ProfileInput, WorkingDirConfig } from "../../types/profile";
+import { SkillPicker } from "./SkillPicker";
+import { McpPicker } from "./McpPicker";
+import { SystemPromptPicker } from "./SystemPromptPicker";
 
 interface ProfileEditorProps {
   profile: Profile | null;
@@ -39,6 +42,15 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
     profile?.mcp_servers?.config_path || ""
   );
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(
+    new Set(profile?.skills || [])
+  );
+  const [disabledMcps, setDisabledMcps] = useState<Set<string>>(
+    new Set(profile?.disabled_mcps || [])
+  );
+  const [systemPromptFile, setSystemPromptFile] = useState<string | null>(
+    profile?.system_prompt_file || null
+  );
 
   const handleAddInput = () => {
     setInputs([
@@ -89,6 +101,9 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
       prompt_template: promptTemplate.trim() || undefined,
       auto_execute: false,
       mcp_servers: mcpConfigPath ? { config_path: mcpConfigPath } : undefined,
+      disabled_mcps: Array.from(disabledMcps),
+      system_prompt_file: systemPromptFile || undefined,
+      skills: selectedSkills.size > 0 ? Array.from(selectedSkills) : undefined,
       allowed_tools: tools.length > 0 ? tools : undefined,
       model: model.trim() || undefined,
       system_prompt: profile?.system_prompt,
@@ -294,6 +309,36 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
                   placeholder="/path/to/mcp-config.json"
                   value={mcpConfigPath}
                   onChange={(e) => setMcpConfigPath(e.target.value)}
+                />
+              </div>
+              <div className="profiles-field">
+                <label className="profiles-field-label">
+                  MCP Servers
+                  <span className="profiles-field-hint">Uncheck to disable per session</span>
+                </label>
+                <McpPicker
+                  disabledMcps={disabledMcps}
+                  onDisabledChange={setDisabledMcps}
+                />
+              </div>
+              <div className="profiles-field">
+                <label className="profiles-field-label">
+                  System Prompt
+                  <span className="profiles-field-hint">Appended via --append-system-prompt</span>
+                </label>
+                <SystemPromptPicker
+                  selected={systemPromptFile}
+                  onSelect={setSystemPromptFile}
+                />
+              </div>
+              <div className="profiles-field">
+                <label className="profiles-field-label">
+                  Skills
+                  <span className="profiles-field-hint">Select skills to activate when launching</span>
+                </label>
+                <SkillPicker
+                  selectedSkills={selectedSkills}
+                  onSelectionChange={setSelectedSkills}
                 />
               </div>
             </div>

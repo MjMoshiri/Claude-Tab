@@ -2,12 +2,16 @@ use crate::ipc::AppState;
 use claude_tabs_core::hook_listener::HookListener;
 use claude_tabs_core::profile::{self, Profile, ProfileLaunchRequest};
 use claude_tabs_core::session::Session;
+use claude_tabs_core::profile::{McpServerEntry, SystemPromptEntry};
+use claude_tabs_core::skills::{SkillError, SkillInfo};
 use claude_tabs_core::state_machine::{SessionState, TransitionError};
 use claude_tabs_core::traits::provider::PtySize;
+use claude_tabs_core::worktree::{self, WorktreeError, WorktreeInfo};
 use claude_tabs_platform_focus::{self as platform_focus, AttentionType};
 use claude_tabs_pty::PtyError;
 use claude_tabs_storage::{ClaudeSession, DirectoryPreference, SessionFilter, SessionMessage, SessionMetadata, StorageError};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use tauri::State;
 use tracing::{debug, info};
 
@@ -64,6 +68,18 @@ impl From<claude_tabs_platform_focus::FocusError> for CommandError {
     }
 }
 
+impl From<WorktreeError> for CommandError {
+    fn from(e: WorktreeError) -> Self {
+        CommandError::Internal(e.to_string())
+    }
+}
+
+impl From<SkillError> for CommandError {
+    fn from(e: SkillError) -> Self {
+        CommandError::Internal(e.to_string())
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SessionInfo {
     pub id: String,
@@ -117,6 +133,12 @@ pub struct CreateSessionRequest {
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
     pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub disabled_mcps: Option<Vec<String>>,
+    #[serde(default)]
+    pub system_prompt_file: Option<String>,
+    #[serde(default)]
+    pub metadata: Option<HashMap<String, serde_json::Value>>,
 }
 
 #[tauri::command]
@@ -154,6 +176,43 @@ pub async fn create_session(
         );
     }
 
+    // Handle disabled MCPs: filter visible servers + enable them
+    let mut request = request;
+    if let Some(ref disabled) = request.disabled_mcps {
+        if let Some(ref wd) = request.working_directory {
+            // 1. Enable all visible MCPs (set disabledMcpServers to only the unchecked ones)
+            if let Err(e) = profile::set_project_disabled_mcps(wd, disabled) {
+                debug!(error = %e, "Failed to update project disabled MCPs");
+            }
+            // 2. Write strict config with only the checked MCPs so unchecked ones don't appear
+            if request.mcp_config_path.is_none() {
+                match profile::write_filtered_mcp_config(&session_id, disabled, None, Some(wd)) {
+                    Ok(Some(path)) => {
+                        request.mcp_config_path = Some(path.to_string_lossy().to_string());
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        debug!(error = %e, "Failed to write filtered MCP config");
+                    }
+                }
+            }
+        }
+    }
+
+    // Handle system_prompt_file: read content and set as system_prompt
+    if request.system_prompt.is_none() {
+        if let Some(ref file_name) = request.system_prompt_file {
+            match profile::read_system_prompt_content(file_name) {
+                Ok(content) => {
+                    request.system_prompt = Some(content);
+                }
+                Err(e) => {
+                    debug!(error = %e, "Failed to read system prompt file");
+                }
+            }
+        }
+    }
+
     let size = PtySize { rows: 24, cols: 80 };
 
     let command = if request.provider_id == "claude-code" {
@@ -174,6 +233,7 @@ pub async fn create_session(
         if let Some(ref mcp_path) = request.mcp_config_path {
             a.push("--mcp-config".to_string());
             a.push(mcp_path.clone());
+            a.push("--strict-mcp-config".to_string());
         }
         if let Some(ref tools) = request.allowed_tools {
             if !tools.is_empty() {
@@ -215,6 +275,21 @@ pub async fn create_session(
     state.session_store.add(session.clone()).await;
     state.session_store.set_active(Some(session_id.clone())).await;
 
+    // Apply metadata entries if provided
+    if let Some(metadata) = &request.metadata {
+        for (key, value) in metadata {
+            state.session_store.set_metadata(&session_id, key, value.clone()).await;
+        }
+        // Set subtitle from worktree branch if present
+        if let Some(branch) = metadata.get("worktree_branch").and_then(|v| v.as_str()) {
+            state.session_store.set_metadata(
+                &session_id,
+                "subtitle",
+                serde_json::Value::String(format!("\u{2387} {}", branch)),
+            ).await;
+        }
+    }
+
     let event = claude_tabs_core::Event::new(
         "session.created",
         serde_json::json!({
@@ -224,7 +299,9 @@ pub async fn create_session(
     );
     state.event_bus.emit(event).await;
 
-    Ok(SessionInfo::from(&session))
+    // Re-read session to include metadata in response
+    let final_session = state.session_store.get(&session_id).await.unwrap_or(session);
+    Ok(SessionInfo::from(&final_session))
 }
 
 #[tauri::command]
@@ -233,6 +310,15 @@ pub async fn close_session(
     session_id: String,
 ) -> Result<(), CommandError> {
     info!(session_id = %session_id, "Closing session");
+
+    // Check for worktree metadata before removing session
+    let worktree_info = if let Some(session) = state.session_store.get(&session_id).await {
+        let wt_path = session.metadata.get("worktree_path").and_then(|v| v.as_str()).map(String::from);
+        let wt_branch = session.metadata.get("worktree_branch").and_then(|v| v.as_str()).map(String::from);
+        wt_path.zip(wt_branch)
+    } else {
+        None
+    };
 
     // Cleanup temp MCP config file if this session had one
     profile::cleanup_temp_mcp_config(&session_id);
@@ -245,6 +331,19 @@ pub async fn close_session(
     let sessions = state.session_store.list().await;
     let new_active = sessions.first().map(|s| s.id.clone());
     state.session_store.set_active(new_active).await;
+
+    // Emit worktree cleanup event if session had a worktree
+    if let Some((wt_path, wt_branch)) = worktree_info {
+        let cleanup_event = claude_tabs_core::Event::new(
+            "session.worktree_cleanup",
+            serde_json::json!({
+                "session_id": session_id,
+                "worktree_path": wt_path,
+                "worktree_branch": wt_branch,
+            }),
+        );
+        state.event_bus.emit(cleanup_event).await;
+    }
 
     let event = claude_tabs_core::Event::new(
         "session.closed",
@@ -281,9 +380,9 @@ pub async fn set_active_session(
     );
     state.event_bus.emit(active_event).await;
 
-    // Only transition idle → active on focus. Don't touch running, your_turn, paused, or active sessions.
+    // Transition idle/completed → active on focus. Don't touch running, your_turn, paused, or active sessions.
     if let Some(session) = state.session_store.get(&session_id).await {
-        if session.state == SessionState::Idle {
+        if matches!(session.state, SessionState::Idle | SessionState::Completed) {
             if let Ok(transition) = state
                 .state_machine
                 .transition_session(&session_id, SessionState::Active, "user.focus")
@@ -353,7 +452,7 @@ pub async fn rename_session(
 }
 
 #[tauri::command]
-pub fn write_to_pty(
+pub async fn write_to_pty(
     state: State<'_, AppState>,
     session_id: String,
     data: Vec<u8>,
@@ -361,6 +460,37 @@ pub fn write_to_pty(
     state
         .pty_manager
         .write_data(&session_id, &data)?;
+
+    // Enter key (\r) while in your_turn/completed → transition to running.
+    // This covers the gap where Claude asks for permission and the user presses
+    // Enter to respond, but no hook fires until the tool finishes.
+    if data.contains(&b'\r') {
+        let sm = state.state_machine.clone();
+        let ss = state.session_store.clone();
+        let eb = state.event_bus.clone();
+        let sid = session_id;
+        tokio::spawn(async move {
+            if let Some(session) = ss.get(&sid).await {
+                if matches!(session.state, SessionState::YourTurn | SessionState::Completed) {
+                    if let Ok(transition) = sm
+                        .transition_session(&sid, SessionState::Running, "terminal.enter")
+                        .await
+                    {
+                        let event = claude_tabs_core::Event::new(
+                            "session.state_changed",
+                            serde_json::json!({
+                                "session_id": sid,
+                                "from": transition.from.as_str(),
+                                "to": "running",
+                            }),
+                        );
+                        eb.emit(event).await;
+                    }
+                }
+            }
+        });
+    }
+
     Ok(())
 }
 
@@ -570,6 +700,9 @@ pub async fn resume_session(
         allowed_tools: None,
         model: None,
         system_prompt: None,
+        disabled_mcps: None,
+        system_prompt_file: None,
+        metadata: None,
     };
 
     let result = create_session(state.clone(), request).await?;
@@ -613,6 +746,9 @@ pub async fn fork_session(
         allowed_tools: None,
         model: None,
         system_prompt: None,
+        disabled_mcps: None,
+        system_prompt_file: None,
+        metadata: None,
     };
 
     create_session(state, request).await
@@ -642,6 +778,9 @@ pub async fn fork_active_session(
         allowed_tools: None,
         model: None,
         system_prompt: None,
+        disabled_mcps: None,
+        system_prompt_file: None,
+        metadata: None,
     };
     create_session(state, request).await
 }
@@ -706,17 +845,38 @@ pub async fn launch_profile(
         state.profile_store.resolve_prompt(template, &request.input_values)
     });
 
-    // Handle MCP config
+    // Handle MCP config: enable selected MCPs + filter visible servers
     let session_id_for_mcp = uuid::Uuid::new_v4().to_string();
-    let mcp_config_path = if let Some(ref mcp) = profile.mcp_servers {
-        state
-            .profile_store
-            .write_temp_mcp_config(&session_id_for_mcp, mcp)
+    let mcp_config_path = if let Some(ref wd) = working_directory {
+        let disabled = profile.disabled_mcps.as_deref().unwrap_or(&[]);
+        // 1. Enable all visible MCPs in project config
+        if let Err(e) = profile::set_project_disabled_mcps(wd, disabled) {
+            debug!(error = %e, "Failed to update project disabled MCPs for profile");
+        }
+        // 2. Write strict config with only checked MCPs + any extra profile servers
+        let extra = profile.mcp_servers.as_ref();
+        profile::write_filtered_mcp_config(&session_id_for_mcp, disabled, extra, Some(wd))
             .map_err(|e| CommandError::Internal(e))?
             .map(|p| p.to_string_lossy().to_string())
     } else {
         None
     };
+
+    // Handle system prompt file from profile
+    let system_prompt = if profile.system_prompt.is_some() {
+        profile.system_prompt.clone()
+    } else if let Some(ref file_name) = profile.system_prompt_file {
+        profile::read_system_prompt_content(file_name).ok()
+    } else {
+        None
+    };
+
+    // Sync skills before creating session
+    if let Some(ref skills) = profile.skills {
+        if !skills.is_empty() {
+            state.skill_manager.sync_skills(skills)?;
+        }
+    }
 
     let title = profile.name.clone();
 
@@ -730,7 +890,10 @@ pub async fn launch_profile(
         mcp_config_path,
         allowed_tools: profile.allowed_tools.clone(),
         model: profile.model.clone(),
-        system_prompt: profile.system_prompt.clone(),
+        system_prompt,
+        disabled_mcps: None, // Already handled via set_project_disabled_mcps
+        system_prompt_file: None, // Already resolved above
+        metadata: None,
     };
 
     let result = create_session(state.clone(), create_request).await?;
@@ -853,4 +1016,63 @@ pub async fn trigger_title_generation(
     // For now, just return the prompt - actual Haiku call TBD
     let _ = prompt;
     Ok(None)
+}
+
+// ============================================================================
+// Git Worktree Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn check_git_repo(path: String) -> Result<bool, CommandError> {
+    Ok(worktree::is_git_repo(&path))
+}
+
+#[tauri::command]
+pub fn create_worktree(
+    repo_path: String,
+    branch_name: Option<String>,
+) -> Result<WorktreeInfo, CommandError> {
+    Ok(worktree::create_worktree(&repo_path, branch_name.as_deref())?)
+}
+
+#[tauri::command]
+pub fn remove_worktree(worktree_path: String) -> Result<(), CommandError> {
+    Ok(worktree::remove_worktree(&worktree_path)?)
+}
+
+// ============================================================================
+// Skill Management Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn list_available_skills(
+    state: State<'_, AppState>,
+) -> Result<Vec<SkillInfo>, CommandError> {
+    Ok(state.skill_manager.list_available_skills()?)
+}
+
+#[tauri::command]
+pub fn sync_skills(
+    state: State<'_, AppState>,
+    skills: Vec<String>,
+) -> Result<(), CommandError> {
+    Ok(state.skill_manager.sync_skills(&skills)?)
+}
+
+// ============================================================================
+// MCP Server Discovery Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn list_mcp_servers() -> Result<Vec<McpServerEntry>, CommandError> {
+    Ok(profile::list_mcp_servers())
+}
+
+// ============================================================================
+// System Prompt Commands
+// ============================================================================
+
+#[tauri::command]
+pub fn list_system_prompts() -> Result<Vec<SystemPromptEntry>, CommandError> {
+    Ok(profile::list_system_prompts())
 }

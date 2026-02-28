@@ -40,7 +40,7 @@ export { ConfigProvider, useConfig } from "./ConfigProvider";
 export { ExtensionHost, type ExtensionHostConfig } from "./ExtensionHost";
 export { EventBusProvider, useEventBus, useEventBusOptional } from "./EventBusContext";
 export { FocusProvider, useFocus, useWindowFocused } from "./FocusContext";
-export { SessionStateProvider, useSessionState, useToastState } from "./SessionStateContext";
+export { SessionStateProvider, useSessionState } from "./SessionStateContext";
 export { KeybindingManagerProvider, useKeybindingManager } from "./KeybindingManagerContext";
 export {
   createStateStore,

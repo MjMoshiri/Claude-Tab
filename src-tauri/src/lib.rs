@@ -3,9 +3,10 @@ use claude_tabs_core::event_bus::EventBus;
 use claude_tabs_core::hook_listener::HookListener;
 use claude_tabs_core::profile::ProfileStore;
 use claude_tabs_core::session::SessionStore;
+use claude_tabs_core::skills::SkillManager;
 use claude_tabs_core::state_machine::{SessionState, StateMachine};
 use claude_tabs_pty::{OutputStream, PtyManager};
-use claude_tabs_storage::{JsonlTailer, SessionScanner, SqliteBackend};
+use claude_tabs_storage::{SessionScanner, SqliteBackend};
 use claude_tabs_tauri_bridge::commands;
 use claude_tabs_tauri_bridge::ipc::{AppState, IpcBridge};
 use std::sync::Arc;
@@ -37,8 +38,8 @@ pub fn run() {
             }
         };
 
-    let scanner = Arc::new(SessionScanner::new().expect("HOME environment variable must be set"));
     let profile_store = Arc::new(ProfileStore::new());
+    let skill_manager = Arc::new(SkillManager::new());
 
     let app_state = AppState {
         event_bus: event_bus.clone(),
@@ -49,7 +50,7 @@ pub fn run() {
         storage: storage.clone(),
         profile_store: profile_store.clone(),
         state_machine: state_machine.clone(),
-        scanner: scanner.clone(),
+        skill_manager,
     };
 
     tauri::Builder::default()
@@ -95,6 +96,16 @@ pub fn run() {
             commands::set_session_hidden,
             commands::get_session_chain,
             commands::trigger_title_generation,
+            // Git worktree
+            commands::check_git_repo,
+            commands::create_worktree,
+            commands::remove_worktree,
+            // Skill management
+            commands::list_available_skills,
+            commands::sync_skills,
+            // MCP and system prompt discovery
+            commands::list_mcp_servers,
+            commands::list_system_prompts,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -287,80 +298,6 @@ pub fn run() {
                 });
             }
 
-            // JSONL watcher: detect interrupts instantly via filesystem events.
-            // Watches ~/.claude/projects/ recursively; sessions are registered on hook events.
-            if let Some(mut tailer) = JsonlTailer::new() {
-                // Task 1: Register sessions on hook events, unregister on close
-                let tailer_ref = tailer.share();
-                let ss_reg = ss.clone();
-                let scanner_reg = scanner.clone();
-                let mut lifecycle_rx = eb.receiver();
-                tauri::async_runtime::spawn(async move {
-                    loop {
-                        match lifecycle_rx.recv().await {
-                            Ok(event) => {
-                                let session_id = event.payload.get("session_id")
-                                    .and_then(|v| v.as_str()).unwrap_or("");
-                                if session_id.is_empty() { continue; }
-
-                                match event.topic.as_str() {
-                                    t if t.starts_with("hook.") => {
-                                        if tailer_ref.is_registered(session_id) { continue; }
-                                        if let Some(session) = ss_reg.get(session_id).await {
-                                            if let Some(claude_sid) = session.metadata
-                                                .get("claude_session_id")
-                                                .and_then(|v| v.as_str())
-                                            {
-                                                if let Some(path) = scanner_reg.find_jsonl_path(claude_sid) {
-                                                    tailer_ref.register(session_id, path);
-                                                }
-                                            }
-                                        }
-                                    }
-                                    "session.closed" => {
-                                        tailer_ref.unregister(session_id);
-                                    }
-                                    _ => {}
-                                }
-                            }
-                            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
-                            Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
-                        }
-                    }
-                });
-
-                // Task 2: Process interrupt events from the watcher
-                let sm_tail = state_machine.clone();
-                let eb_tail = eb.clone();
-                tauri::async_runtime::spawn(async move {
-                    while let Some((session_id, _event)) = tailer.recv().await {
-                        match sm_tail
-                            .transition_session(&session_id, SessionState::Paused, "jsonl.interrupted")
-                            .await
-                        {
-                            Ok(transition) => {
-                                let ev = claude_tabs_core::Event::new(
-                                    "session.state_changed",
-                                    serde_json::json!({
-                                        "session_id": session_id,
-                                        "from": transition.from.as_str(),
-                                        "to": "paused",
-                                    }),
-                                );
-                                eb_tail.emit(ev).await;
-                                info!(session_id = %session_id, "Interrupt detected via JSONL watcher");
-                            }
-                            Err(e) => {
-                                debug!(session_id = %session_id, error = %e, "Interrupt transition skipped");
-                            }
-                        }
-                    }
-                });
-                info!("JSONL watcher started");
-            } else {
-                warn!("JSONL watcher not started (projects directory not found)");
-            }
-
             // State reconciliation task: verify PTY liveness, persist state to DB
             {
                 let ss_recon = ss.clone();
@@ -376,7 +313,7 @@ pub fn run() {
                         for session in &sessions {
                             // Check PTY liveness
                             if !pm_recon.is_alive(&session.id)
-                                && matches!(session.state, SessionState::Running | SessionState::YourTurn | SessionState::Paused)
+                                && matches!(session.state, SessionState::Running | SessionState::YourTurn | SessionState::Paused | SessionState::Completed)
                             {
                                 match sm_recon
                                     .transition_session(&session.id, SessionState::Idle, "reconciliation.pty_dead")

@@ -32,6 +32,8 @@ export interface Profile {
   allowed_tools?: string[];
   model?: string;
   system_prompt?: string;
+  disabled_mcps?: string[];
+  system_prompt_file?: string;
   inputs: ProfileInput[];
   tags: string[];
 }
@@ -40,4 +42,21 @@ export interface ProfileLaunchRequest {
   profile_id: string;
   input_values: Record<string, string>;
   working_directory?: string;
+}
+
+export interface McpServerEntry {
+  name: string;
+  server_type: string;
+}
+
+export interface SystemPromptEntry {
+  name: string;
+  preview: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  source_path: string;
+  is_active: boolean;
+  group: string;
 }

@@ -355,7 +355,7 @@ impl HookListener {
                     }
                 }
             }
-            "Stop" => HookAction::Transition(SessionState::Active, "hook.Stop"),
+            "Stop" => HookAction::Transition(SessionState::Completed, "hook.Stop"),
             "PostToolUse" => HookAction::Transition(SessionState::Running, "hook.PostToolUse"),
             "PostToolUseFailure" => HookAction::Ignore,
             "SessionEnd" => HookAction::RemoveSession,
@@ -456,9 +456,9 @@ impl HookListener {
         );
         event_bus.emit(hook_event).await;
 
-        // Interrupt detection is handled by the JSONL tailer (polls file changes).
-        // The Stop hook just transitions to Active; the tailer will override to
-        // Paused if it sees an interrupt marker in the JSONL.
+        // Interrupt detection is handled by ESC keypress in the frontend terminal.
+        // The frontend fires set_session_state("paused") on ESC; the Stop hook
+        // transitions to Active, resolving the race naturally.
         let action = Self::resolve_action(&msg);
 
         match action {

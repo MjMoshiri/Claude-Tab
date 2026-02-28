@@ -24,4 +24,13 @@ export interface CreateSessionRequest {
   allowed_tools?: string[];
   model?: string;
   system_prompt?: string;
+  disabled_mcps?: string[];
+  system_prompt_file?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorktreeInfo {
+  path: string;
+  branch: string;
+  repo_path: string;
 }

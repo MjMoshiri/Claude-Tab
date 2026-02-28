@@ -1,230 +1,216 @@
 /**
- * UnifiedTerminal - Simple xterm.js terminal connected to PTY
+ * TerminalInstance — Manages one xterm.js terminal connected to a PTY.
  *
- * Standard terminal behavior - all input goes directly to PTY,
- * all output displayed as-is. Scrollback preserved while running.
+ * This is an imperative class (not a React component) that owns the terminal
+ * lifecycle. The terminal's DOM element can be attached to and detached from
+ * any container without losing state — the xterm buffer preserves all content
+ * regardless of DOM attachment. PTY output continues to be buffered while
+ * detached and is visible immediately on reattach + refresh.
  */
 
-import { useEffect, useRef, useCallback } from "react";
-import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebglAddon } from "@xterm/addon-webgl";
+import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { PtyOutputEvent } from "../../types/events";
-import { useKeybindingManager } from "../../kernel/KeybindingManagerContext";
 
-interface UnifiedTerminalProps {
-  sessionId: string;
-  isActive?: boolean;
+export interface KeybindingHandler {
+  eventToKeyString(e: KeyboardEvent): string;
+  hasBinding(key: string): boolean;
 }
 
-export function UnifiedTerminal({ sessionId, isActive = false }: UnifiedTerminalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const terminalRef = useRef<Terminal | null>(null);
-  const fitAddonRef = useRef<FitAddon | null>(null);
-  const keybindingManager = useKeybindingManager();
+export class TerminalInstance {
+  readonly terminal: Terminal;
+  readonly fitAddon: FitAddon;
+  readonly element: HTMLDivElement;
+  private unlisteners: Array<() => void> = [];
+  private disposed = false;
+  private webglAddon: WebglAddon | null = null;
 
-  // Send data to PTY
-  const sendToPty = useCallback(async (data: string) => {
-    try {
-      const bytes = Array.from(new TextEncoder().encode(data));
-      await invoke("write_to_pty", { sessionId, data: bytes });
-    } catch (err) {
-      console.error("Failed to write to PTY:", err);
-    }
-  }, [sessionId]);
+  constructor(
+    private sessionId: string,
+    private keybindingHandler: KeybindingHandler,
+  ) {
+    // Wrapper element — reparented between containers on tab switch
+    this.element = document.createElement("div");
+    this.element.style.cssText =
+      "width:100%;height:100%;overflow:hidden;background:var(--terminal-bg,#1e1e1e);";
 
-  // Initialize terminal
-  useEffect(() => {
-    if (!containerRef.current || terminalRef.current) return;
+    // Read theme from CSS custom properties
+    const cs = getComputedStyle(document.documentElement);
+    const css = (prop: string, fb: string) =>
+      cs.getPropertyValue(prop).trim() || fb;
 
-    // Read terminal colors from CSS custom properties
-    const computedStyle = getComputedStyle(document.documentElement);
-    const termBg = computedStyle.getPropertyValue("--terminal-bg").trim() || "#1e1e1e";
-    const termFg = computedStyle.getPropertyValue("--terminal-fg").trim() || "#e5e5e5";
-    const termCursor = computedStyle.getPropertyValue("--terminal-cursor").trim() || "#e5e5e5";
-    const termSelection = computedStyle.getPropertyValue("--terminal-selection").trim() || "rgba(255,255,255,0.15)";
-
-    const term = new Terminal({
+    this.terminal = new Terminal({
       cursorBlink: true,
       cursorStyle: "bar",
       disableStdin: false,
       fontSize: 14,
-      fontFamily: "SF Mono, JetBrains Mono, Menlo, Monaco, Consolas, monospace",
+      fontFamily:
+        "SF Mono, JetBrains Mono, Menlo, Monaco, Consolas, monospace",
       theme: {
-        background: termBg,
-        foreground: termFg,
-        cursor: termCursor,
-        selectionBackground: termSelection,
+        background: css("--terminal-bg", "#1e1e1e"),
+        foreground: css("--terminal-fg", "#e5e5e5"),
+        cursor: css("--terminal-cursor", "#e5e5e5"),
+        selectionBackground: css(
+          "--terminal-selection",
+          "rgba(255,255,255,0.15)",
+        ),
       },
       allowProposedApi: true,
       scrollback: 10000,
     });
 
-    const fitAddon = new FitAddon();
-    term.loadAddon(fitAddon);
-    fitAddonRef.current = fitAddon;
+    this.fitAddon = new FitAddon();
+    this.terminal.loadAddon(this.fitAddon);
 
-    term.open(containerRef.current);
-
-    // Try WebGL addon for better performance
-    try {
-      const webglAddon = new WebglAddon();
-      webglAddon.onContextLoss(() => webglAddon.dispose());
-      term.loadAddon(webglAddon);
-    } catch {
-      // Canvas fallback - no action needed
-    }
-
-    terminalRef.current = term;
+    // Open into wrapper — may be detached from DOM, buffer still works
+    this.terminal.open(this.element);
+    this.loadWebGL();
 
     // Intercept app keybindings before xterm processes them
-    // This prevents character injection (e.g., Alt+C producing 'ç')
-    // when pressing app shortcuts like Cmd+Alt+C
-    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
-      const keyStr = keybindingManager.eventToKeyString(e);
-      if (keybindingManager.hasBinding(keyStr)) {
-        // Let the app's KeybindingManager handle this key
-        // Return false to prevent xterm from processing it
-        return false;
-      }
-      // Let xterm handle normally
-      return true;
-    });
-
-    // Handle keyboard input - send directly to PTY
-    // Suppress focus-in/out escape sequences briefly after mount to prevent
-    // ^[[I / ^[[O appearing before the shell/Claude Code is ready
-    const mountTime = Date.now();
-    term.onData((data) => {
-      if (Date.now() - mountTime < 500 && (data === '\x1b[I' || data === '\x1b[O')) {
-        return;
-      }
-      sendToPty(data);
-    });
-
-    // Initial fit
-    requestAnimationFrame(() => {
-      fitAddon.fit();
-      invoke("resize_pty", {
-        sessionId,
-        rows: term.rows,
-        cols: term.cols,
-      }).catch(console.error);
-    });
-
-    return () => {
-      term.dispose();
-      terminalRef.current = null;
-      fitAddonRef.current = null;
-    };
-  }, [sessionId, sendToPty, keybindingManager]);
-
-  // Listen to PTY output
-  useEffect(() => {
-    let mounted = true;
-    const unsubs: Array<() => void> = [];
-
-    // Decode Base64 string to Uint8Array
-    const decodeBase64 = (base64: string): Uint8Array => {
-      const binaryString = atob(base64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      return bytes;
-    };
-
-    const setup = async () => {
-      // Listen for PTY output (Base64 encoded)
-      const u1 = await listen<PtyOutputEvent>("pty-output", (e) => {
-        if (!mounted) return;
-        const { session_id, data } = e.payload;
-        if (session_id === sessionId && terminalRef.current) {
-          const bytes = decodeBase64(data);
-          terminalRef.current.write(bytes);
-        }
-      });
-      if (!mounted) { u1(); return; }
-      unsubs.push(u1);
-
-      // Listen for PTY exit
-      const u2 = await listen<{ session_id: string }>("pty-exit", (e) => {
-        if (!mounted) return;
-        const { session_id } = e.payload;
-        if (session_id === sessionId && terminalRef.current) {
-          terminalRef.current.writeln("\r\n[Process exited]");
-        }
-      });
-      if (!mounted) { u2(); return; }
-      unsubs.push(u2);
-    };
-
-    setup();
-
-    return () => {
-      mounted = false;
-      unsubs.forEach(u => u());
-    };
-  }, [sessionId]);
-
-  // Resize observer
-  // Skip resize when container has zero dimensions (display: none),
-  // otherwise the PTY gets resized to 0 rows/cols which freezes the process.
-  useEffect(() => {
-    if (!containerRef.current) return;
-
-    const observer = new ResizeObserver((entries) => {
-      const entry = entries[0];
-      if (!entry) return;
-      const { width, height } = entry.contentRect;
-      if (width === 0 || height === 0) return;
-
-      if (fitAddonRef.current && terminalRef.current) {
-        fitAddonRef.current.fit();
-        invoke("resize_pty", {
+    this.terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.key === "Escape" && e.type === "keydown") {
+        invoke("set_session_state", {
           sessionId,
-          rows: terminalRef.current.rows,
-          cols: terminalRef.current.cols,
-        }).catch(console.error);
+          newState: "paused",
+        }).catch(() => {});
       }
+      return !this.keybindingHandler.hasBinding(
+        this.keybindingHandler.eventToKeyString(e),
+      );
     });
 
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, [sessionId]);
+    // Keyboard input → PTY
+    // Suppress focus-in/out escape sequences briefly after mount
+    const mountTime = Date.now();
+    this.terminal.onData((data) => {
+      if (
+        Date.now() - mountTime < 500 &&
+        (data === "\x1b[I" || data === "\x1b[O")
+      )
+        return;
+      this.sendToPty(data);
+    });
 
-  // Handle activation - focus immediately, fit in next frame
-  useEffect(() => {
-    if (isActive && terminalRef.current && fitAddonRef.current) {
-      // Focus immediately to avoid gap where focus falls to document.body
-      // (browser blurs old terminal when its container gets display:none)
-      const activeEl = document.activeElement;
-      const isOverlayFocused = activeEl && activeEl.closest(
-        "[role='dialog'], .command-palette-backdrop, .settings-backdrop, .profiles-backdrop"
-      );
-      if (!isOverlayFocused) {
-        terminalRef.current.focus();
-      }
-      // Fit in next frame (needs visible layout dimensions)
-      requestAnimationFrame(() => {
-        if (fitAddonRef.current) {
-          fitAddonRef.current.fit();
-        }
+    // PTY output → terminal buffer
+    this.setupPtyListeners();
+  }
+
+  private loadWebGL() {
+    try {
+      this.webglAddon = new WebglAddon();
+      this.webglAddon.onContextLoss(() => {
+        this.webglAddon?.dispose();
+        this.webglAddon = null;
       });
+      this.terminal.loadAddon(this.webglAddon);
+    } catch {
+      this.webglAddon = null;
     }
-  }, [isActive]);
+  }
 
-  return (
-    <div
-      ref={containerRef}
-      style={{
-        width: "100%",
-        height: "100%",
-        overflow: "hidden",
-        backgroundColor: "var(--terminal-bg, #1e1e1e)",
-      }}
-    />
-  );
+  private async sendToPty(data: string) {
+    try {
+      const bytes = Array.from(new TextEncoder().encode(data));
+      await invoke("write_to_pty", { sessionId: this.sessionId, data: bytes });
+    } catch (err) {
+      console.error("Failed to write to PTY:", err);
+    }
+  }
+
+  private async setupPtyListeners() {
+    const decode = (b64: string): Uint8Array => {
+      const bin = atob(b64);
+      const out = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+      return out;
+    };
+
+    const u1 = await listen<PtyOutputEvent>("pty-output", (e) => {
+      if (this.disposed) return;
+      if (e.payload.session_id === this.sessionId) {
+        this.terminal.write(decode(e.payload.data));
+      }
+    });
+    if (this.disposed) {
+      u1();
+      return;
+    }
+    this.unlisteners.push(u1);
+
+    const u2 = await listen<{ session_id: string }>("pty-exit", (e) => {
+      if (this.disposed) return;
+      if (e.payload.session_id === this.sessionId) {
+        this.terminal.writeln("\r\n[Process exited]");
+      }
+    });
+    if (this.disposed) {
+      u2();
+      return;
+    }
+    this.unlisteners.push(u2);
+  }
+
+  /** Fit terminal to its current container and sync PTY dimensions. */
+  fit() {
+    if (this.disposed) return;
+
+    const prevRows = this.terminal.rows;
+    const prevCols = this.terminal.cols;
+
+    this.fitAddon.fit();
+
+    // Only resize PTY if dimensions actually changed — avoids unnecessary SIGWINCH
+    if (this.terminal.rows !== prevRows || this.terminal.cols !== prevCols) {
+      invoke("resize_pty", {
+        sessionId: this.sessionId,
+        rows: this.terminal.rows,
+        cols: this.terminal.cols,
+      }).catch(console.error);
+    }
+  }
+
+  /** Attach to a visible container, fit to its dimensions, and focus. */
+  activate(container: HTMLDivElement) {
+    if (this.disposed) return;
+
+    // Move element into the visible container
+    container.appendChild(this.element);
+
+    // Wait one frame for layout, then fit and focus
+    requestAnimationFrame(() => {
+      if (this.disposed) return;
+
+      this.fit();
+
+      // Reload WebGL if context was lost while detached
+      if (!this.webglAddon) this.loadWebGL();
+      if (typeof (this.terminal as any).clearTextureAtlas === "function") {
+        (this.terminal as any).clearTextureAtlas();
+      }
+
+      // Redraw all visible rows from buffer
+      this.terminal.refresh(0, this.terminal.rows - 1);
+
+      // Focus unless a modal/overlay currently has focus
+      const active = document.activeElement;
+      const overlayFocused = active?.closest(
+        "[role='dialog'], .command-palette-backdrop, .settings-backdrop, .profiles-backdrop",
+      );
+      if (!overlayFocused) {
+        this.terminal.focus();
+      }
+    });
+  }
+
+  dispose() {
+    this.disposed = true;
+    this.unlisteners.forEach((u) => u());
+    this.unlisteners = [];
+    this.webglAddon?.dispose();
+    this.terminal.dispose();
+    this.element.remove();
+  }
 }
