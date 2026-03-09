@@ -133,9 +133,23 @@ function ProfileLauncher() {
   };
 
   const searchQuery = query.toLowerCase();
-  const filtered = profiles.filter((p) =>
-    searchQuery ? fuzzyMatch(searchQuery, p.name) || (p.description && fuzzyMatch(searchQuery, p.description)) : true,
-  );
+  const filtered = profiles
+    .filter((p) =>
+      searchQuery ? fuzzyMatch(searchQuery, p.name) || (p.description && fuzzyMatch(searchQuery, p.description)) : true,
+    )
+    .sort((a, b) => {
+      // Default profile always first
+      if (a.is_default && !b.is_default) return -1;
+      if (!a.is_default && b.is_default) return 1;
+      if (searchQuery) {
+        // Prioritize name matches over description-only matches
+        const aNameMatch = fuzzyMatch(searchQuery, a.name);
+        const bNameMatch = fuzzyMatch(searchQuery, b.name);
+        if (aNameMatch && !bNameMatch) return -1;
+        if (!aNameMatch && bNameMatch) return 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
@@ -185,7 +199,6 @@ function ProfileLauncher() {
               placeholder="Launch profile..."
               value={query}
               onChange={(e) => { setQuery(e.target.value); setSelected(0); }}
-              onKeyDown={handleKeyDown}
             />
             <div className="command-palette-list">
               {filtered.map((profile, i) => (

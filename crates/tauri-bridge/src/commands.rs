@@ -2,7 +2,7 @@ use crate::ipc::AppState;
 use claude_tabs_core::hook_listener::HookListener;
 use claude_tabs_core::profile::{self, Profile, ProfileLaunchRequest};
 use claude_tabs_core::session::Session;
-use claude_tabs_core::profile::{McpServerEntry, SystemPromptEntry};
+use claude_tabs_core::profile::SystemPromptEntry;
 use claude_tabs_core::skills::{SkillError, SkillInfo};
 use claude_tabs_core::state_machine::{SessionState, TransitionError};
 use claude_tabs_core::traits::provider::PtySize;
@@ -129,12 +129,9 @@ pub struct CreateSessionRequest {
     pub resume_claude_session_id: Option<String>,
     pub fork: Option<bool>,
     pub initial_prompt: Option<String>,
-    pub mcp_config_path: Option<String>,
     pub allowed_tools: Option<Vec<String>>,
     pub model: Option<String>,
     pub system_prompt: Option<String>,
-    #[serde(default)]
-    pub disabled_mcps: Option<Vec<String>>,
     #[serde(default)]
     pub system_prompt_file: Option<String>,
     #[serde(default)]
@@ -176,30 +173,8 @@ pub async fn create_session(
         );
     }
 
-    // Handle disabled MCPs: filter visible servers + enable them
-    let mut request = request;
-    if let Some(ref disabled) = request.disabled_mcps {
-        if let Some(ref wd) = request.working_directory {
-            // 1. Enable all visible MCPs (set disabledMcpServers to only the unchecked ones)
-            if let Err(e) = profile::set_project_disabled_mcps(wd, disabled) {
-                debug!(error = %e, "Failed to update project disabled MCPs");
-            }
-            // 2. Write strict config with only the checked MCPs so unchecked ones don't appear
-            if request.mcp_config_path.is_none() {
-                match profile::write_filtered_mcp_config(&session_id, disabled, None, Some(wd)) {
-                    Ok(Some(path)) => {
-                        request.mcp_config_path = Some(path.to_string_lossy().to_string());
-                    }
-                    Ok(None) => {}
-                    Err(e) => {
-                        debug!(error = %e, "Failed to write filtered MCP config");
-                    }
-                }
-            }
-        }
-    }
-
     // Handle system_prompt_file: read content and set as system_prompt
+    let mut request = request;
     if request.system_prompt.is_none() {
         if let Some(ref file_name) = request.system_prompt_file {
             match profile::read_system_prompt_content(file_name) {
@@ -229,11 +204,6 @@ pub async fn create_session(
             if request.fork.unwrap_or(false) {
                 a.push("--fork-session".to_string());
             }
-        }
-        if let Some(ref mcp_path) = request.mcp_config_path {
-            a.push("--mcp-config".to_string());
-            a.push(mcp_path.clone());
-            a.push("--strict-mcp-config".to_string());
         }
         if let Some(ref tools) = request.allowed_tools {
             if !tools.is_empty() {
@@ -319,9 +289,6 @@ pub async fn close_session(
     } else {
         None
     };
-
-    // Cleanup temp MCP config file if this session had one
-    profile::cleanup_temp_mcp_config(&session_id);
 
     // Remove from store
     state.session_store.remove(&session_id).await;
@@ -696,11 +663,9 @@ pub async fn resume_session(
         resume_claude_session_id: Some(claude_session_id.clone()),
         fork: None,
         initial_prompt: None,
-        mcp_config_path: None,
         allowed_tools: None,
         model: None,
         system_prompt: None,
-        disabled_mcps: None,
         system_prompt_file: None,
         metadata: None,
     };
@@ -742,11 +707,9 @@ pub async fn fork_session(
         resume_claude_session_id: Some(claude_session_id),
         fork: Some(true),
         initial_prompt: None,
-        mcp_config_path: None,
         allowed_tools: None,
         model: None,
         system_prompt: None,
-        disabled_mcps: None,
         system_prompt_file: None,
         metadata: None,
     };
@@ -774,11 +737,9 @@ pub async fn fork_active_session(
         resume_claude_session_id: Some(claude_session_id),
         fork: Some(true),
         initial_prompt: None,
-        mcp_config_path: None,
         allowed_tools: None,
         model: None,
         system_prompt: None,
-        disabled_mcps: None,
         system_prompt_file: None,
         metadata: None,
     };
@@ -845,23 +806,6 @@ pub async fn launch_profile(
         state.profile_store.resolve_prompt(template, &request.input_values)
     });
 
-    // Handle MCP config: enable selected MCPs + filter visible servers
-    let session_id_for_mcp = uuid::Uuid::new_v4().to_string();
-    let mcp_config_path = if let Some(ref wd) = working_directory {
-        let disabled = profile.disabled_mcps.as_deref().unwrap_or(&[]);
-        // 1. Enable all visible MCPs in project config
-        if let Err(e) = profile::set_project_disabled_mcps(wd, disabled) {
-            debug!(error = %e, "Failed to update project disabled MCPs for profile");
-        }
-        // 2. Write strict config with only checked MCPs + any extra profile servers
-        let extra = profile.mcp_servers.as_ref();
-        profile::write_filtered_mcp_config(&session_id_for_mcp, disabled, extra, Some(wd))
-            .map_err(|e| CommandError::Internal(e))?
-            .map(|p| p.to_string_lossy().to_string())
-    } else {
-        None
-    };
-
     // Handle system prompt file from profile
     let system_prompt = if profile.system_prompt.is_some() {
         profile.system_prompt.clone()
@@ -887,11 +831,9 @@ pub async fn launch_profile(
         resume_claude_session_id: None,
         fork: None,
         initial_prompt,
-        mcp_config_path,
         allowed_tools: profile.allowed_tools.clone(),
         model: profile.model.clone(),
         system_prompt,
-        disabled_mcps: None, // Already handled via set_project_disabled_mcps
         system_prompt_file: None, // Already resolved above
         metadata: None,
     };
@@ -1057,15 +999,6 @@ pub fn sync_skills(
     skills: Vec<String>,
 ) -> Result<(), CommandError> {
     Ok(state.skill_manager.sync_skills(&skills)?)
-}
-
-// ============================================================================
-// MCP Server Discovery Commands
-// ============================================================================
-
-#[tauri::command]
-pub fn list_mcp_servers() -> Result<Vec<McpServerEntry>, CommandError> {
-    Ok(profile::list_mcp_servers())
 }
 
 // ============================================================================

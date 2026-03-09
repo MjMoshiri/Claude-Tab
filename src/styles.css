@@ -2251,33 +2251,6 @@
   letter-spacing: 0.03em;
 }
 
-/* --- MCP picker type badge --- */
-
-.mcp-picker-type-badge {
-  margin-left: auto;
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-elevated);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-}
-
-/* --- MCP picker in new-tab dialog --- */
-
-.session-create-mcps {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-}
-
-.session-create-mcps-label {
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
-}
 
 /* --- System prompt picker --- */
 

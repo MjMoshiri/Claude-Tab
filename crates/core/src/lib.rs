@@ -34,8 +34,8 @@ pub use traits::output::{OutputChunk, OutputError, OutputReader, SessionOutputSt
 
 // Profile types
 pub use profile::{
-    cleanup_temp_mcp_config, list_mcp_servers, list_system_prompts, read_system_prompt_content,
-    write_filtered_mcp_config, McpServerEntry, Profile, ProfileInput, ProfileLaunchRequest,
+    list_system_prompts, read_system_prompt_content,
+    Profile, ProfileInput, ProfileLaunchRequest,
     ProfileStore, SystemPromptEntry,
 };
 

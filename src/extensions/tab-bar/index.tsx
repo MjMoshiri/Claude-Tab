@@ -11,7 +11,6 @@ import { ClaudeSession } from "./types";
 import { toggleSettings } from "../settings";
 import { toggleProfiles } from "../profiles";
 import { SkillPicker } from "../profiles/SkillPicker";
-import { McpPicker } from "../profiles/McpPicker";
 import { SystemPromptPicker } from "../profiles/SystemPromptPicker";
 
 const MIN_WIDTH = 150;
@@ -362,7 +361,6 @@ function SidePanel() {
   const [isGitRepo, setIsGitRepo] = useState(false);
   const [creatingSession, setCreatingSession] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<Set<string> | null>(null);
-  const [disabledMcps, setDisabledMcps] = useState<Set<string>>(new Set());
   const [systemPromptFile, setSystemPromptFile] = useState<string | null>(null);
 
   const handleNewTab = async () => {
@@ -377,7 +375,6 @@ function SidePanel() {
     setUseWorktree(false);
     setWorktreeBranch("");
     setSelectedSkills(null);
-    setDisabledMcps(new Set());
     setSystemPromptFile(null);
 
     // Load all skills and default to all selected
@@ -436,7 +433,6 @@ function SidePanel() {
           provider_id: "claude-code",
           title,
           working_directory: workingDir,
-          disabled_mcps: disabledMcps.size > 0 ? [...disabledMcps] : undefined,
           system_prompt_file: systemPromptFile || undefined,
           metadata,
         },
@@ -449,7 +445,6 @@ function SidePanel() {
       setWorktreeBranch("");
       setIsGitRepo(false);
       setSelectedSkills(null);
-      setDisabledMcps(new Set());
       setSystemPromptFile(null);
     } catch (err) {
       console.error("[SidePanel] Session creation failed:", err);
@@ -466,7 +461,6 @@ function SidePanel() {
     setWorktreeBranch("");
     setIsGitRepo(false);
     setSelectedSkills(null);
-    setDisabledMcps(new Set());
     setSystemPromptFile(null);
   };
 
@@ -787,13 +781,6 @@ function SidePanel() {
               />
             </div>
           )}
-          <div className="session-create-mcps">
-            <label className="session-create-mcps-label">MCP Servers</label>
-            <McpPicker
-              disabledMcps={disabledMcps}
-              onDisabledChange={setDisabledMcps}
-            />
-          </div>
           <div className="session-create-system-prompt">
             <label className="session-create-system-prompt-label">System Prompt</label>
             <SystemPromptPicker

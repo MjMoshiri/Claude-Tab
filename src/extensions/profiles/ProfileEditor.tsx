@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import { Profile, ProfileInput, WorkingDirConfig } from "../../types/profile";
 import { SkillPicker } from "./SkillPicker";
-import { McpPicker } from "./McpPicker";
 import { SystemPromptPicker } from "./SystemPromptPicker";
 
 interface ProfileEditorProps {
@@ -61,19 +60,14 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
   const [allowedTools, setAllowedTools] = useState(
     profile?.allowed_tools?.join(", ") || ""
   );
-  const [mcpConfigPath, setMcpConfigPath] = useState(
-    profile?.mcp_servers?.config_path || ""
-  );
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [selectedSkills, setSelectedSkills] = useState<Set<string>>(
     new Set(profile?.skills || [])
   );
-  const [disabledMcps, setDisabledMcps] = useState<Set<string>>(
-    new Set(profile?.disabled_mcps || [])
-  );
   const [systemPromptFile, setSystemPromptFile] = useState<string | null>(
     profile?.system_prompt_file || null
   );
+  const [isDefault, setIsDefault] = useState(profile?.is_default || false);
 
   // Auto-detect inputs from {{key}} in prompt template
   useEffect(() => {
@@ -161,8 +155,6 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
       working_directory,
       prompt_template: promptTemplate.trim() || undefined,
       auto_execute: false,
-      mcp_servers: mcpConfigPath ? { config_path: mcpConfigPath } : undefined,
-      disabled_mcps: Array.from(disabledMcps),
       system_prompt_file: systemPromptFile || undefined,
       skills: selectedSkills.size > 0 ? Array.from(selectedSkills) : undefined,
       allowed_tools: tools.length > 0 ? tools : undefined,
@@ -170,6 +162,7 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
       system_prompt: profile?.system_prompt,
       inputs: inputs.filter((i) => i.key && i.label),
       tags: profile?.tags || [],
+      is_default: isDefault,
     };
 
     onSave(newProfile);
@@ -206,6 +199,18 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
+        </div>
+
+        <div className="profiles-field">
+          <label className="profiles-radio">
+            <input
+              type="checkbox"
+              checked={isDefault}
+              onChange={(e) => setIsDefault(e.target.checked)}
+            />
+            Default profile
+            <span className="profiles-field-hint">First in quick launcher</span>
+          </label>
         </div>
 
         <div className="profiles-field">
@@ -366,26 +371,6 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
                   placeholder="Read, Grep, Glob, Bash, Edit, Write, Task..."
                   value={allowedTools}
                   onChange={(e) => setAllowedTools(e.target.value)}
-                />
-              </div>
-              <div className="profiles-field">
-                <label className="profiles-field-label">MCP Config Path</label>
-                <input
-                  className="profiles-field-input"
-                  type="text"
-                  placeholder="/path/to/mcp-config.json"
-                  value={mcpConfigPath}
-                  onChange={(e) => setMcpConfigPath(e.target.value)}
-                />
-              </div>
-              <div className="profiles-field">
-                <label className="profiles-field-label">
-                  MCP Servers
-                  <span className="profiles-field-hint">Uncheck to disable per session</span>
-                </label>
-                <McpPicker
-                  disabledMcps={disabledMcps}
-                  onDisabledChange={setDisabledMcps}
                 />
               </div>
               <div className="profiles-field">

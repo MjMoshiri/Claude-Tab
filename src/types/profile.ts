@@ -14,11 +14,6 @@ export interface WorkingDirConfig {
   key?: string;
 }
 
-export interface McpConfig {
-  config_path?: string;
-  servers?: Record<string, unknown>;
-}
-
 export interface Profile {
   id: string;
   name: string;
@@ -27,26 +22,20 @@ export interface Profile {
   working_directory?: WorkingDirConfig;
   prompt_template?: string;
   auto_execute: boolean;
-  mcp_servers?: McpConfig;
   skills?: string[];
   allowed_tools?: string[];
   model?: string;
   system_prompt?: string;
-  disabled_mcps?: string[];
   system_prompt_file?: string;
   inputs: ProfileInput[];
   tags: string[];
+  is_default?: boolean;
 }
 
 export interface ProfileLaunchRequest {
   profile_id: string;
   input_values: Record<string, string>;
   working_directory?: string;
-}
-
-export interface McpServerEntry {
-  name: string;
-  server_type: string;
 }
 
 export interface SystemPromptEntry {

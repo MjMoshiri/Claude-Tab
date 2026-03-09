@@ -103,8 +103,7 @@ pub fn run() {
             // Skill management
             commands::list_available_skills,
             commands::sync_skills,
-            // MCP and system prompt discovery
-            commands::list_mcp_servers,
+            // System prompt discovery
             commands::list_system_prompts,
             commands::read_system_prompt,
             commands::save_system_prompt,

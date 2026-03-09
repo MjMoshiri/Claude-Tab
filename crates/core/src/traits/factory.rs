@@ -30,9 +30,6 @@ pub struct CreateSessionConfig {
     /// Initial prompt to send
     pub initial_prompt: Option<String>,
 
-    /// Path to MCP configuration file
-    pub mcp_config_path: Option<String>,
-
     /// Allowed tools for Claude
     pub allowed_tools: Option<Vec<String>>,
 
@@ -59,7 +56,6 @@ impl Default for CreateSessionConfig {
             resume_claude_session_id: None,
             fork: false,
             initial_prompt: None,
-            mcp_config_path: None,
             allowed_tools: None,
             model: None,
             system_prompt: None,

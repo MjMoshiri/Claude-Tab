@@ -119,7 +119,7 @@ export default function Home() {
           <FeatureCard
             icon="&#9881;"
             title="Profiles"
-            description="Create reusable session templates with custom prompts, models, and MCP configurations."
+            description="Create reusable session templates with custom prompts, models, and tools."
             highlight="One-click project setup"
           />
           <FeatureCard
