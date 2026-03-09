@@ -4,11 +4,7 @@ A tab-based terminal manager for running multiple [Claude Code](https://docs.ant
 
 ## Demo
 
-https://github.com/user-attachments/assets/demo.mov
-
-https://github.com/MjMoshiri/Claude-Tab/raw/main/demo.mov
-
-<video src="demo.mov" controls width="100%"></video>
+[Watch the demo](https://github.com/MjMoshiri/Claude-Tab/raw/main/demo.mov)
 
 ## Features
 
