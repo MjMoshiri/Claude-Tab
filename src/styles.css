@@ -1419,6 +1419,52 @@
   color: var(--text-secondary);
 }
 
+.settings-textarea {
+  width: 100%;
+  margin-top: var(--space-1);
+  padding: var(--space-1) 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  resize: vertical;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.settings-textarea:focus {
+  border-color: var(--accent);
+}
+
+.settings-textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-select {
+  padding: var(--space-1) 6px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+.settings-select:focus {
+  border-color: var(--accent);
+}
+
+.settings-select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* ============================================================
    Profiles Panel
    ============================================================ */
@@ -1881,6 +1927,132 @@
 .profiles-save-btn:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+/* --- Profile Packs / Batch / Tabs --- */
+
+.profiles-header-tabs {
+  display: flex;
+  gap: 0;
+  margin: 0 auto;
+}
+
+.profiles-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: var(--font-sm);
+  padding: var(--space-1) var(--space-3);
+  cursor: pointer;
+  transition: color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.profiles-tab:hover {
+  color: var(--text-primary);
+}
+
+.profiles-tab-active {
+  color: var(--text-primary);
+  border-bottom-color: var(--accent);
+}
+
+.profiles-danger-badge {
+  display: inline-block;
+  background: var(--red);
+  color: var(--bg-primary);
+  font-size: 10px;
+  font-weight: 700;
+  width: 14px;
+  height: 14px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.profiles-danger-toggle {
+  color: var(--red) !important;
+}
+
+.profiles-danger-hint {
+  color: var(--red) !important;
+  opacity: 0.8;
+}
+
+.profiles-card-action-launch {
+  color: var(--green) !important;
+}
+
+.profiles-card-action-launch:hover {
+  color: var(--accent) !important;
+}
+
+.profiles-pack-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-2) 0;
+}
+
+.profiles-pack-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: var(--font-sm);
+  color: var(--text-secondary);
+}
+
+.profiles-pack-item:hover {
+  background: var(--hover-bg);
+  color: var(--text-primary);
+}
+
+.profiles-batch-toggle {
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+
+.profiles-batch-values {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.profiles-batch-textarea {
+  resize: vertical;
+  min-height: 60px;
+  font-family: inherit;
+  line-height: 1.4;
+}
+
+.profiles-batch-count {
+  font-size: var(--font-xs);
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.profiles-batch-delimiter {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.profiles-delimiter-input {
+  width: 48px;
+  text-align: center;
+  padding: 2px 4px;
+  font-size: var(--font-xs);
+}
+
+.profiles-launch-batch {
+  background: var(--orange, var(--accent));
 }
 
 /* ============================================================

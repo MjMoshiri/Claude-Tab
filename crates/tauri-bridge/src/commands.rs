@@ -1,6 +1,6 @@
 use crate::ipc::AppState;
 use claude_tabs_core::hook_listener::HookListener;
-use claude_tabs_core::profile::{self, Profile, ProfileLaunchRequest};
+use claude_tabs_core::profile::{self, Pack, Profile, ProfileLaunchRequest};
 use claude_tabs_core::session::Session;
 use claude_tabs_core::profile::SystemPromptEntry;
 use claude_tabs_core::skills::{SkillError, SkillInfo};
@@ -136,6 +136,8 @@ pub struct CreateSessionRequest {
     pub system_prompt_file: Option<String>,
     #[serde(default)]
     pub metadata: Option<HashMap<String, serde_json::Value>>,
+    #[serde(default)]
+    pub dangerously_skip_permissions: bool,
 }
 
 /// Resolve PATH from the user's login shell so app bundles (macOS) can find
@@ -193,6 +195,21 @@ pub async fn create_session(
         );
     }
 
+    // Auto-accept: inject env vars when enabled
+    if let Some(serde_json::Value::Bool(true)) = state.config.get("autoAccept.enabled").await {
+        if let Some(serde_json::Value::String(policy)) = state.config.get("autoAccept.defaultPolicy").await {
+            if !policy.is_empty() {
+                env.insert("AUTO_ACCEPT_POLICY".to_string(), policy);
+            }
+        }
+        if let Some(serde_json::Value::String(model)) = state.config.get("autoAccept.model").await {
+            env.insert("AUTO_ACCEPT_MODEL".to_string(), model);
+        }
+        if let Some(serde_json::Value::String(mode)) = state.config.get("autoAccept.mode").await {
+            env.insert("AUTO_ACCEPT_MODE".to_string(), mode);
+        }
+    }
+
     // Handle system_prompt_file: read content and set as system_prompt
     let mut request = request;
     if request.system_prompt.is_none() {
@@ -238,6 +255,9 @@ pub async fn create_session(
         if let Some(ref sys_prompt) = request.system_prompt {
             a.push("--append-system-prompt".to_string());
             a.push(sys_prompt.clone());
+        }
+        if request.dangerously_skip_permissions {
+            a.push("--dangerously-skip-permissions".to_string());
         }
         // Add prompt as positional arg (interactive mode) instead of -p (print mode)
         if request.resume_claude_session_id.is_none() {
@@ -688,6 +708,7 @@ pub async fn resume_session(
         system_prompt: None,
         system_prompt_file: None,
         metadata: None,
+        dangerously_skip_permissions: false,
     };
 
     let result = create_session(state.clone(), request).await?;
@@ -732,6 +753,7 @@ pub async fn fork_session(
         system_prompt: None,
         system_prompt_file: None,
         metadata: None,
+        dangerously_skip_permissions: false,
     };
 
     create_session(state, request).await
@@ -762,6 +784,7 @@ pub async fn fork_active_session(
         system_prompt: None,
         system_prompt_file: None,
         metadata: None,
+        dangerously_skip_permissions: false,
     };
     create_session(state, request).await
 }
@@ -856,6 +879,7 @@ pub async fn launch_profile(
         system_prompt,
         system_prompt_file: None, // Already resolved above
         metadata: None,
+        dangerously_skip_permissions: profile.dangerously_skip_permissions,
     };
 
     let result = create_session(state.clone(), create_request).await?;
@@ -871,6 +895,29 @@ pub async fn launch_profile(
         .await;
 
     Ok(result)
+}
+
+// --- Pack commands ---
+
+#[tauri::command]
+pub async fn list_packs(state: State<'_, AppState>) -> Result<Vec<Pack>, CommandError> {
+    Ok(state.pack_store.list().await)
+}
+
+#[tauri::command]
+pub async fn save_pack(
+    state: State<'_, AppState>,
+    pack: Pack,
+) -> Result<(), CommandError> {
+    state.pack_store.save(pack).await.map_err(|e| CommandError::Internal(e))
+}
+
+#[tauri::command]
+pub async fn delete_pack(
+    state: State<'_, AppState>,
+    pack_id: String,
+) -> Result<(), CommandError> {
+    state.pack_store.delete(&pack_id).await.map_err(|e| CommandError::Internal(e))
 }
 
 // ============================================================================

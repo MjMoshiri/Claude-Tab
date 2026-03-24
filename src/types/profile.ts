@@ -30,6 +30,27 @@ export interface Profile {
   inputs: ProfileInput[];
   tags: string[];
   is_default?: boolean;
+  dangerously_skip_permissions?: boolean;
+}
+
+export interface Pack {
+  id: string;
+  name: string;
+  description?: string;
+  profile_ids: string[];
+}
+
+export interface PackLaunchRequest {
+  pack_id: string;
+  input_values_per_profile: Record<string, Record<string, string>>;
+  working_directory?: string;
+}
+
+export interface BatchLaunchRequest {
+  profile_id: string;
+  batch_inputs: Record<string, string[]>;
+  static_inputs: Record<string, string>;
+  working_directory?: string;
 }
 
 export interface ProfileLaunchRequest {

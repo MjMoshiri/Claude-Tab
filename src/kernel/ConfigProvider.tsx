@@ -9,6 +9,10 @@ const CONFIG_DEFAULTS: Record<string, unknown> = {
   "autoFocus.inactivitySeconds": 5,
   "autoFocus.countdownSeconds": 3,
   "skillGroups": {},
+  "autoAccept.enabled": false,
+  "autoAccept.defaultPolicy": "",
+  "autoAccept.model": "haiku",
+  "autoAccept.mode": "permission",
 };
 
 interface ConfigContextValue {

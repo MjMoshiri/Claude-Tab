@@ -66,6 +66,17 @@ pub struct Profile {
     pub tags: Vec<String>,
     #[serde(default)]
     pub is_default: bool,
+    #[serde(default)]
+    pub dangerously_skip_permissions: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Pack {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub profile_ids: Vec<String>,
 }
 
 fn default_version() -> u32 {
@@ -174,6 +185,94 @@ impl ProfileStore {
         result
     }
 
+}
+
+pub struct PackStore {
+    dir: PathBuf,
+    packs: RwLock<HashMap<String, Pack>>,
+}
+
+impl PackStore {
+    pub fn new() -> Self {
+        let home = dirs_home();
+        let dir = home.join(".claude-tabs").join("packs");
+        Self {
+            dir,
+            packs: RwLock::new(HashMap::new()),
+        }
+    }
+
+    pub async fn init(&self) {
+        if let Err(e) = std::fs::create_dir_all(&self.dir) {
+            error!(error = %e, "Failed to create packs directory");
+            return;
+        }
+        self.reload().await;
+    }
+
+    pub async fn reload(&self) {
+        let mut packs = HashMap::new();
+        if let Ok(entries) = std::fs::read_dir(&self.dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().map_or(false, |ext| ext == "json") {
+                    match load_pack_file(&path) {
+                        Ok(pack) => {
+                            debug!(id = %pack.id, "Loaded pack");
+                            packs.insert(pack.id.clone(), pack);
+                        }
+                        Err(e) => {
+                            warn!(path = %path.display(), error = %e, "Failed to load pack");
+                        }
+                    }
+                }
+            }
+        }
+        info!(count = packs.len(), "Packs loaded");
+        *self.packs.write().await = packs;
+    }
+
+    pub async fn list(&self) -> Vec<Pack> {
+        let packs = self.packs.read().await;
+        let mut list: Vec<_> = packs.values().cloned().collect();
+        list.sort_by(|a, b| a.name.cmp(&b.name));
+        list
+    }
+
+    pub async fn get(&self, id: &str) -> Option<Pack> {
+        self.packs.read().await.get(id).cloned()
+    }
+
+    pub async fn save(&self, pack: Pack) -> Result<(), String> {
+        let filename = format!("{}.json", &pack.id);
+        let path = self.dir.join(&filename);
+        let json = serde_json::to_string_pretty(&pack)
+            .map_err(|e| format!("Failed to serialize pack: {}", e))?;
+        std::fs::write(&path, json)
+            .map_err(|e| format!("Failed to write pack file: {}", e))?;
+        info!(id = %pack.id, path = %path.display(), "Pack saved");
+        self.packs.write().await.insert(pack.id.clone(), pack);
+        Ok(())
+    }
+
+    pub async fn delete(&self, id: &str) -> Result<(), String> {
+        let filename = format!("{}.json", id);
+        let path = self.dir.join(&filename);
+        if path.exists() {
+            std::fs::remove_file(&path)
+                .map_err(|e| format!("Failed to delete pack file: {}", e))?;
+        }
+        self.packs.write().await.remove(id);
+        info!(id = %id, "Pack deleted");
+        Ok(())
+    }
+}
+
+fn load_pack_file(path: &Path) -> Result<Pack, String> {
+    let content = std::fs::read_to_string(path)
+        .map_err(|e| format!("Failed to read {}: {}", path.display(), e))?;
+    serde_json::from_str(&content)
+        .map_err(|e| format!("Failed to parse {}: {}", path.display(), e))
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

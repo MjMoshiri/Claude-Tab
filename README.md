@@ -12,8 +12,12 @@ A tab-based terminal manager for running multiple [Claude Code](https://docs.ant
 - **Auto-Focus** — Automatically switches to the session that needs your attention
 - **Smart Notifications** — Native macOS notifications when Claude needs your input or permission
 - **Session Archive** — Every session is saved to SQLite; search, resume, or fork past conversations
-- **Profiles** — Reusable session templates with custom prompts, models, and tools
+- **Profiles** — Reusable session templates with custom prompts, models, and tools; one-click copy to duplicate
+- **Profile Packs** — Group multiple profiles and launch them all at once
+- **Batch Run** — Paste multiple values with a configurable delimiter; launches the cartesian product of all inputs as parallel sessions
+- **Dangerous Mode** — Per-profile toggle to pass `--dangerously-skip-permissions` to the Claude CLI
 - **Keyboard-First** — Navigate and manage sessions without the mouse (`Cmd+1-9` for quick switch)
+- **Auto-Accept** — LLM-powered permission gate via [claude-auto-accept](https://github.com/MjMoshiri/claude-auto-accept); set a natural language policy per session to auto-accept or deny tool calls
 - **Extension System** — Plugin architecture on both frontend (React) and backend (Rust)
 
 ## Architecture

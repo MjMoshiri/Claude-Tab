@@ -1,7 +1,7 @@
 use claude_tabs_core::config::Config;
 use claude_tabs_core::event_bus::EventBus;
 use claude_tabs_core::hook_listener::HookListener;
-use claude_tabs_core::profile::ProfileStore;
+use claude_tabs_core::profile::{ProfileStore, PackStore};
 use claude_tabs_core::session::SessionStore;
 use claude_tabs_core::skills::SkillManager;
 use claude_tabs_core::state_machine::{SessionState, StateMachine};
@@ -39,6 +39,7 @@ pub fn run() {
         };
 
     let profile_store = Arc::new(ProfileStore::new());
+    let pack_store = Arc::new(PackStore::new());
     let skill_manager = Arc::new(SkillManager::new());
 
     let app_state = AppState {
@@ -49,6 +50,7 @@ pub fn run() {
         output_stream: output_stream.clone(),
         storage: storage.clone(),
         profile_store: profile_store.clone(),
+        pack_store: pack_store.clone(),
         state_machine: state_machine.clone(),
         skill_manager,
     };
@@ -87,6 +89,10 @@ pub fn run() {
             commands::save_profile,
             commands::delete_profile,
             commands::launch_profile,
+            // Packs
+            commands::list_packs,
+            commands::save_pack,
+            commands::delete_pack,
             // Window focus (platform-specific)
             commands::focus_window,
             commands::request_attention,
@@ -117,9 +123,11 @@ pub fn run() {
             let ss = session_store.clone();
 
             let ps = profile_store.clone();
+            let pks = pack_store.clone();
             tauri::async_runtime::spawn(async move {
                 ps.init().await;
-                info!("Profiles loaded");
+                pks.init().await;
+                info!("Profiles and packs loaded");
             });
 
             let bridge = IpcBridge::new(app_handle, os.clone(), eb.clone());

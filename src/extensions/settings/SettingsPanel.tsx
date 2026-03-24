@@ -335,6 +335,12 @@ export function SettingsPanel() {
   // Session idle timeout (minutes before session transitions to Idle state)
   const idleTimeoutMinutes = config.get<number>("session.idleTimeoutMinutes", 30);
 
+  // Auto-accept settings
+  const autoAcceptEnabled = config.get<boolean>("autoAccept.enabled", false);
+  const autoAcceptPolicy = config.get<string>("autoAccept.defaultPolicy", "");
+  const autoAcceptModel = config.get<string>("autoAccept.model", "haiku");
+  const autoAcceptMode = config.get<string>("autoAccept.mode", "permission");
+
   useEffect(() => {
     const update = () => {
       const wasVisible = visible;
@@ -481,6 +487,76 @@ export function SettingsPanel() {
               max={120}
               suffix="min"
             />
+          </div>
+
+          {/* Auto-Accept Section */}
+          <div className="settings-panel-section">Auto-Accept</div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Enable auto-accept</span>
+              <span className="settings-item-desc">
+                Use an LLM judge to auto-accept or deny permission requests based on a policy
+              </span>
+            </div>
+            <Toggle
+              checked={autoAcceptEnabled}
+              onChange={(checked) => config.set("autoAccept.enabled", checked)}
+            />
+          </div>
+
+          <div className="settings-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+            <div className="settings-item-info">
+              <span className="settings-item-label">Default policy</span>
+              <span className="settings-item-desc">
+                Natural language policy applied to new sessions (can be overridden per profile)
+              </span>
+            </div>
+            <textarea
+              className="settings-textarea"
+              value={autoAcceptPolicy}
+              onChange={(e) => config.set("autoAccept.defaultPolicy", e.target.value)}
+              placeholder="e.g. This is a refactoring session. Accept everything except commits, stashes, or irreversible file deletions."
+              rows={3}
+              disabled={!autoAcceptEnabled}
+            />
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Judge model</span>
+              <span className="settings-item-desc">
+                Model used to evaluate permission requests
+              </span>
+            </div>
+            <select
+              className="settings-select"
+              value={autoAcceptModel}
+              onChange={(e) => config.set("autoAccept.model", e.target.value)}
+              disabled={!autoAcceptEnabled}
+            >
+              <option value="haiku">Haiku</option>
+              <option value="sonnet">Sonnet</option>
+              <option value="opus">Opus</option>
+            </select>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Mode</span>
+              <span className="settings-item-desc">
+                "Permission" only gates permission dialogs. "All" gates every tool call.
+              </span>
+            </div>
+            <select
+              className="settings-select"
+              value={autoAcceptMode}
+              onChange={(e) => config.set("autoAccept.mode", e.target.value)}
+              disabled={!autoAcceptEnabled}
+            >
+              <option value="permission">Permission only</option>
+              <option value="all">All tool calls</option>
+            </select>
           </div>
 
           {/* Skill Groups Section */}

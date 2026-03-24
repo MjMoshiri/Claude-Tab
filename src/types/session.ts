@@ -25,6 +25,7 @@ export interface CreateSessionRequest {
   system_prompt?: string;
   system_prompt_file?: string;
   metadata?: Record<string, unknown>;
+  dangerously_skip_permissions?: boolean;
 }
 
 export interface WorktreeInfo {

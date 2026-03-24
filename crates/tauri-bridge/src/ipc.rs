@@ -1,7 +1,7 @@
 use base64::Engine;
 use claude_tabs_core::config::Config;
 use claude_tabs_core::event_bus::EventBus;
-use claude_tabs_core::profile::ProfileStore;
+use claude_tabs_core::profile::{ProfileStore, PackStore};
 use claude_tabs_core::session::SessionStore;
 use claude_tabs_core::skills::SkillManager;
 use claude_tabs_core::state_machine::StateMachine;
@@ -19,6 +19,7 @@ pub struct AppState {
     pub output_stream: Arc<OutputStream>,
     pub storage: Arc<dyn StorageBackend>,
     pub profile_store: Arc<ProfileStore>,
+    pub pack_store: Arc<PackStore>,
     pub state_machine: Arc<StateMachine>,
     pub skill_manager: Arc<SkillManager>,
 }

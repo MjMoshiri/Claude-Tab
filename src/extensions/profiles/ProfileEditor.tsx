@@ -68,6 +68,9 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
     profile?.system_prompt_file || null
   );
   const [isDefault, setIsDefault] = useState(profile?.is_default || false);
+  const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(
+    profile?.dangerously_skip_permissions || false
+  );
 
   // Auto-detect inputs from {{key}} in prompt template
   useEffect(() => {
@@ -163,6 +166,7 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
       inputs: inputs.filter((i) => i.key && i.label),
       tags: profile?.tags || [],
       is_default: isDefault,
+      dangerously_skip_permissions: dangerouslySkipPermissions || undefined,
     };
 
     onSave(newProfile);
@@ -392,6 +396,19 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
                   selectedSkills={selectedSkills}
                   onSelectionChange={setSelectedSkills}
                 />
+              </div>
+              <div className="profiles-field">
+                <label className="profiles-radio profiles-danger-toggle">
+                  <input
+                    type="checkbox"
+                    checked={dangerouslySkipPermissions}
+                    onChange={(e) => setDangerouslySkipPermissions(e.target.checked)}
+                  />
+                  Bypass permissions
+                  <span className="profiles-field-hint profiles-danger-hint">
+                    Runs with --dangerously-skip-permissions. Use with caution.
+                  </span>
+                </label>
               </div>
             </div>
           )}
