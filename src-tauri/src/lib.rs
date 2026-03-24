@@ -57,6 +57,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
@@ -114,6 +115,9 @@ pub fn run() {
             commands::read_system_prompt,
             commands::save_system_prompt,
             commands::delete_system_prompt,
+            // Per-session auto-accept policy
+            commands::set_session_policy,
+            commands::get_session_policy,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

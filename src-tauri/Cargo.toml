@@ -14,6 +14,7 @@ claude-tabs-ext-auto-switch = { path = "../crates/extensions/auto-switch" }
 claude-tabs-ext-directory-tracker = { path = "../crates/extensions/directory-tracker" }
 tauri = { workspace = true, features = ["tray-icon", "devtools"] }
 tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

@@ -195,11 +195,13 @@ pub async fn create_session(
         );
     }
 
-    // Auto-accept: inject env vars when enabled
+    // Auto-accept: inject env vars when enabled and write per-session policy file
     if let Some(serde_json::Value::Bool(true)) = state.config.get("autoAccept.enabled").await {
         if let Some(serde_json::Value::String(policy)) = state.config.get("autoAccept.defaultPolicy").await {
             if !policy.is_empty() {
-                env.insert("AUTO_ACCEPT_POLICY".to_string(), policy);
+                env.insert("AUTO_ACCEPT_POLICY".to_string(), policy.clone());
+                // Write per-session policy file for mid-session changes
+                let _ = write_policy_file(&session_id, &policy);
             }
         }
         if let Some(serde_json::Value::String(model)) = state.config.get("autoAccept.model").await {
@@ -329,6 +331,9 @@ pub async fn close_session(
     } else {
         None
     };
+
+    // Clean up per-session policy file
+    let _ = remove_policy_file(&session_id);
 
     // Remove from store
     state.session_store.remove(&session_id).await;
@@ -1093,5 +1098,51 @@ pub fn save_system_prompt(name: String, content: String) -> Result<(), CommandEr
 pub fn delete_system_prompt(name: String) -> Result<(), CommandError> {
     profile::delete_system_prompt(&name)
         .map_err(CommandError::Internal)
+}
+
+// ============================================================================
+// Auto-Accept Policy Commands
+// ============================================================================
+
+fn policy_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    std::path::PathBuf::from(home)
+        .join(".claude")
+        .join("auto-accept-policies")
+}
+
+fn write_policy_file(session_id: &str, policy: &str) -> Result<(), std::io::Error> {
+    let dir = policy_dir();
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join(session_id), policy)
+}
+
+fn remove_policy_file(session_id: &str) -> Result<(), std::io::Error> {
+    let path = policy_dir().join(session_id);
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_session_policy(session_id: String, policy: String) -> Result<(), CommandError> {
+    if policy.is_empty() {
+        remove_policy_file(&session_id).map_err(|e| CommandError::Internal(e.to_string()))
+    } else {
+        write_policy_file(&session_id, &policy).map_err(|e| CommandError::Internal(e.to_string()))
+    }
+}
+
+#[tauri::command]
+pub fn get_session_policy(session_id: String) -> Result<Option<String>, CommandError> {
+    let path = policy_dir().join(&session_id);
+    if path.exists() {
+        let content = std::fs::read_to_string(path)
+            .map_err(|e| CommandError::Internal(e.to_string()))?;
+        Ok(if content.is_empty() { None } else { Some(content) })
+    } else {
+        Ok(None)
+    }
 }
 

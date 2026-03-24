@@ -319,6 +319,78 @@ function SkillGroupsEditor() {
   );
 }
 
+function UpdateChecker() {
+  const [status, setStatus] = useState<"idle" | "checking" | "available" | "upToDate" | "error">("idle");
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  const [installing, setInstalling] = useState(false);
+
+  const checkForUpdates = async () => {
+    setStatus("checking");
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update) {
+        setUpdateVersion(update.version);
+        setStatus("available");
+      } else {
+        setStatus("upToDate");
+      }
+    } catch {
+      setStatus("error");
+    }
+  };
+
+  const installUpdate = async () => {
+    setInstalling(true);
+    try {
+      const { check } = await import("@tauri-apps/plugin-updater");
+      const update = await check();
+      if (update) {
+        await update.downloadAndInstall();
+        const { relaunch } = await import("@tauri-apps/plugin-process");
+        await relaunch();
+      }
+    } catch {
+      setInstalling(false);
+      setStatus("error");
+    }
+  };
+
+  return (
+    <div className="settings-item">
+      <div className="settings-item-info">
+        <span className="settings-item-label">App updates</span>
+        <span className="settings-item-desc">
+          {status === "checking" && "Checking..."}
+          {status === "available" && `v${updateVersion} available`}
+          {status === "upToDate" && "Up to date"}
+          {status === "error" && "Could not check for updates"}
+          {status === "idle" && "Check for new versions"}
+        </span>
+      </div>
+      {status === "available" ? (
+        <button
+          className="settings-skill-group-add-btn"
+          onClick={installUpdate}
+          disabled={installing}
+          style={{ fontSize: 11, padding: "4px 10px" }}
+        >
+          {installing ? "Installing..." : "Install & Restart"}
+        </button>
+      ) : (
+        <button
+          className="settings-skill-group-add-btn"
+          onClick={checkForUpdates}
+          disabled={status === "checking"}
+          style={{ fontSize: 11, padding: "4px 10px" }}
+        >
+          {status === "checking" ? "Checking..." : "Check"}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function SettingsPanel() {
   const [visible, setVisible] = useState(false);
   const [bindings, setBindings] = useState<KeybindingDefinition[]>([]);
@@ -558,6 +630,10 @@ export function SettingsPanel() {
               <option value="all">All tool calls</option>
             </select>
           </div>
+
+          {/* Updates Section */}
+          <div className="settings-panel-section">Updates</div>
+          <UpdateChecker />
 
           {/* Skill Groups Section */}
           <div className="settings-panel-section">Skill Groups</div>

@@ -35,6 +35,7 @@ function ProfileLauncher() {
   const [inputValues, setInputValues] = useState<Record<string, string>>({});
   const [workingDir, setWorkingDir] = useState("");
   const [launching, setLaunching] = useState(false);
+  const launchingRef = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const firstInputRef = useRef<HTMLInputElement>(null);
 
@@ -50,6 +51,7 @@ function ProfileLauncher() {
         setInputValues({});
         setWorkingDir("");
         setLaunching(false);
+        launchingRef.current = false;
         invoke<Profile[]>("list_profiles").then(setProfiles).catch(console.error);
         setTimeout(() => inputRef.current?.focus(), 0);
       } else if (wasVisible) {
@@ -73,6 +75,8 @@ function ProfileLauncher() {
     values: Record<string, string>,
     dir?: string,
   ) => {
+    if (launchingRef.current) return;
+    launchingRef.current = true;
     setLaunching(true);
     try {
       const request: ProfileLaunchRequest = {
