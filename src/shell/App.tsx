@@ -26,6 +26,7 @@ import { createProfilesExtension } from "../extensions/profiles";
 import { createProfileLauncherExtension } from "../extensions/profile-launcher";
 import { createWindowFocusExtension } from "../extensions/window-focus";
 import { createInactivitySwitchExtension } from "../extensions/inactivity-switch";
+import { createPolicyBadgeExtension } from "../extensions/policy-badge";
 
 /**
  * Kernel instances - created once and persisted for the app lifetime.
@@ -62,6 +63,7 @@ function useKernel() {
     extensionHost.register(createProfileLauncherExtension());
     extensionHost.register(createWindowFocusExtension());
     extensionHost.register(createInactivitySwitchExtension());
+    extensionHost.register(createPolicyBadgeExtension());
 
     return {
       registry,

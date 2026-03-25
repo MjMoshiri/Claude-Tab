@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Profile, ProfileLaunchRequest, Pack } from "../../types/profile";
@@ -30,6 +30,7 @@ export function ProfilesPanel() {
   const [showEditor, setShowEditor] = useState(false);
   const [editingProfile, setEditingProfile] = useState<Profile | null>(null);
   const [launching, setLaunching] = useState(false);
+  const launchingRef = useRef(false);
   const [packs, setPacks] = useState<Pack[]>([]);
   const [showPacks, setShowPacks] = useState(false);
   const [editingPack, setEditingPack] = useState<Pack | null>(null);
@@ -122,6 +123,8 @@ export function ProfilesPanel() {
     values: Record<string, string>,
     dir?: string
   ) => {
+    if (launchingRef.current) return;
+    launchingRef.current = true;
     setLaunching(true);
     try {
       const request: ProfileLaunchRequest = {
@@ -135,6 +138,7 @@ export function ProfilesPanel() {
       console.error("[Profiles] Launch failed:", err);
     } finally {
       setLaunching(false);
+      launchingRef.current = false;
     }
   };
 
