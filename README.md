@@ -6,6 +6,8 @@ A tab-based terminal manager for running multiple [Claude Code](https://docs.ant
 
 [Watch the demo](https://github.com/MjMoshiri/Claude-Tab/raw/main/demo.mov)
 
+<img width="1256" height="1324" alt="image" src="https://github.com/user-attachments/assets/ba7cdeeb-e538-496e-9543-8c548cd8906c" />
+
 ## Features
 
 - **Parallel Sessions** — Run multiple Claude Code instances side by side (`Cmd+T` for new session)
