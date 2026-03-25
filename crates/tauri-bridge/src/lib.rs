@@ -18,7 +18,7 @@ pub use commands::{
     get_profile, get_session_chain, get_session_content, is_app_active, launch_profile,
     list_claude_sessions, list_packs, list_profiles, list_sessions, remove_directory_preference,
     rename_session, request_attention, resize_pty, resume_session, save_pack, save_profile,
-    set_active_session, set_config_value, set_directory_preference, set_session_hidden,
-    set_session_state, setup_hooks, submit_input, trigger_title_generation, write_to_pty,
+    save_config, set_active_session, set_config_value, set_directory_preference,
+    set_session_hidden, set_session_state, setup_hooks, submit_input, trigger_title_generation, write_to_pty,
     CommandError, CreateSessionRequest, SessionInfo,
 };

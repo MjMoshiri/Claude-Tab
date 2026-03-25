@@ -1227,6 +1227,34 @@
   padding: var(--space-2) 0;
 }
 
+.settings-panel-footer {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-2) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.settings-save-btn {
+  background: var(--accent, #0A84FF);
+  border: none;
+  color: #fff;
+  border-radius: 4px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity var(--transition-fast), background var(--transition-fast);
+}
+
+.settings-save-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.settings-save-btn.saved {
+  background: var(--green, #30D158);
+}
+
 .settings-panel-section {
   padding: var(--space-2) var(--space-4) var(--space-1);
   font-size: 10px;

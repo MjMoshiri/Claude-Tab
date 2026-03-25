@@ -395,6 +395,7 @@ export function SettingsPanel() {
   const [visible, setVisible] = useState(false);
   const [bindings, setBindings] = useState<KeybindingDefinition[]>([]);
   const [, setRefresh] = useState(0);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved">("idle");
   const config = useConfig();
 
   // Auto-focus settings
@@ -662,6 +663,24 @@ export function SettingsPanel() {
               ))}
             </React.Fragment>
           ))}
+        </div>
+        <div className="settings-panel-footer">
+          <button
+            className={`settings-save-btn ${saveStatus === "saved" ? "saved" : ""}`}
+            disabled={saveStatus === "saving" || (!config.dirty && saveStatus !== "saved")}
+            onClick={async () => {
+              setSaveStatus("saving");
+              try {
+                await config.save();
+                setSaveStatus("saved");
+                setTimeout(() => setSaveStatus("idle"), 2000);
+              } catch {
+                setSaveStatus("idle");
+              }
+            }}
+          >
+            {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "Saved" : "Save"}
+          </button>
         </div>
       </div>
     </div>

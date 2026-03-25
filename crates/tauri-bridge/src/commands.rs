@@ -579,9 +579,16 @@ pub async fn set_config_value(
 ) -> Result<(), CommandError> {
     state
         .config
-        .set_value(&key, value, claude_tabs_core::ConfigLayer::Runtime)
+        .set_value(&key, value, claude_tabs_core::ConfigLayer::User)
         .await;
     Ok(())
+}
+
+#[tauri::command]
+pub async fn save_config(
+    state: State<'_, AppState>,
+) -> Result<(), CommandError> {
+    state.config.save_user_config().await.map_err(|e| CommandError::Internal(e.to_string()))
 }
 
 #[tauri::command]

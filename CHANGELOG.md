@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.3.1] - 2026-03-25
+
+### Fixed
+- **Settings not persisting across restarts**: Config was stored in memory only (`ConfigLayer::Runtime`). Now persists to `~/.claude-tabs/config.toml` via `ConfigLayer::User` and loads on startup.
+- **No save feedback in settings UI**: Added Save button to settings panel that writes config to disk with visual confirmation.
+
 ## [1.3.0] - 2026-03-25
 
 ### Fixed

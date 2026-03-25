@@ -25,6 +25,21 @@ pub fn run() {
 
     let event_bus = Arc::new(EventBus::new(2048));
     let config = Arc::new(Config::new());
+
+    // Set user config file path and load persisted settings
+    {
+        let config_clone = config.clone();
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let config_path = std::path::PathBuf::from(format!("{}/.claude-tabs/config.toml", home));
+        tauri::async_runtime::block_on(async {
+            config_clone.set_user_file_path(config_path.clone()).await;
+            if config_path.exists() {
+                if let Err(e) = config_clone.load_from_file(&config_path, claude_tabs_core::config::ConfigLayer::User).await {
+                    warn!("Failed to load user config: {}", e);
+                }
+            }
+        });
+    }
     let session_store = Arc::new(SessionStore::new());
     let pty_manager = Arc::new(PtyManager::new());
     let output_stream = Arc::new(OutputStream::new(512));
@@ -72,6 +87,7 @@ pub fn run() {
             commands::submit_input,
             commands::get_config_value,
             commands::set_config_value,
+            commands::save_config,
             commands::setup_hooks,
             // Claude Code session history
             commands::list_claude_sessions,
