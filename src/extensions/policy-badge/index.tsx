@@ -5,6 +5,14 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useConfig } from "../../kernel/ConfigProvider";
 
+type PolicyMode = "off" | "on" | "allow-all";
+
+function deriveMode(policy: string | null): PolicyMode {
+  if (!policy || policy.length === 0) return "off";
+  if (policy === "*") return "allow-all";
+  return "on";
+}
+
 /**
  * PolicyBadge — Tiny indicator in TAB_BAR_LEFT showing the active session's
  * auto-accept policy. Click to view/edit; changes take effect mid-session
@@ -15,6 +23,7 @@ function PolicyBadge() {
   const [policy, setPolicy] = useState<string | null>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState<PolicyMode>("off");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
   const config = useConfig();
@@ -56,7 +65,10 @@ function PolicyBadge() {
     }
     invoke<string | null>("get_session_policy", {
       sessionId: activeId,
-    }).then(setPolicy);
+    }).then((p) => {
+      setPolicy(p);
+      setMode(deriveMode(p));
+    });
   }, [activeId]);
 
   // Close popover on outside click
@@ -76,37 +88,35 @@ function PolicyBadge() {
 
   // Focus textarea on open
   useEffect(() => {
-    if (editing && textareaRef.current) {
+    if (editing && mode === "on" && textareaRef.current) {
       textareaRef.current.focus();
       textareaRef.current.selectionStart = textareaRef.current.value.length;
     }
-  }, [editing]);
+  }, [editing, mode]);
 
   const handleOpen = useCallback(() => {
-    setDraft(policy ?? "");
+    const m = deriveMode(policy);
+    setMode(m);
+    setDraft(m === "on" ? (policy ?? "") : "");
     setEditing(true);
   }, [policy]);
 
-  const handleSave = useCallback(async () => {
+  const applyPolicy = useCallback(async (newPolicy: string) => {
     if (!activeId) return;
     await invoke("set_session_policy", {
       sessionId: activeId,
-      policy: draft,
+      policy: newPolicy,
     });
-    setPolicy(draft || null);
-    setEditing(false);
-  }, [activeId, draft]);
-
-  const handleClear = useCallback(async () => {
-    if (!activeId) return;
-    await invoke("set_session_policy", {
-      sessionId: activeId,
-      policy: "",
-    });
-    setPolicy(null);
-    setDraft("");
+    setPolicy(newPolicy || null);
+    setMode(deriveMode(newPolicy || null));
     setEditing(false);
   }, [activeId]);
+
+  const handleSave = useCallback(() => {
+    if (mode === "off") applyPolicy("");
+    else if (mode === "allow-all") applyPolicy("*");
+    else applyPolicy(draft);
+  }, [mode, draft, applyPolicy]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -123,16 +133,31 @@ function PolicyBadge() {
 
   if (!activeId || !autoAcceptEnabled) return null;
 
-  const hasPolicy = policy !== null && policy.length > 0;
-  const badgeColor = hasPolicy
-    ? "var(--green, #30D158)"
-    : "var(--text-tertiary, #666)";
+  const currentMode = deriveMode(policy);
+  const badgeColor =
+    currentMode === "allow-all"
+      ? "var(--orange, #FF9F0A)"
+      : currentMode === "on"
+        ? "var(--green, #30D158)"
+        : "var(--text-tertiary, #666)";
+  const badgeLabel =
+    currentMode === "allow-all"
+      ? "Allow All"
+      : currentMode === "on"
+        ? "Policy"
+        : "Off";
 
   return (
     <div style={{ position: "relative", marginRight: 6 }}>
       <button
         onClick={handleOpen}
-        title={hasPolicy ? `Policy: ${policy}` : "No auto-accept policy set"}
+        title={
+          currentMode === "allow-all"
+            ? "Auto-accept: allowing all"
+            : currentMode === "on"
+              ? `Policy: ${policy}`
+              : "Auto-accept off"
+        }
         style={{
           background: "none",
           border: `1px solid ${badgeColor}`,
@@ -144,10 +169,10 @@ function PolicyBadge() {
           cursor: "pointer",
           whiteSpace: "nowrap",
           lineHeight: "16px",
-          opacity: hasPolicy ? 1 : 0.6,
+          opacity: currentMode !== "off" ? 1 : 0.6,
         }}
       >
-        {hasPolicy ? "\u2713 Policy" : "\u2717 Policy"}
+        {badgeLabel}
       </button>
 
       {editing && (
@@ -171,85 +196,109 @@ function PolicyBadge() {
               fontSize: 11,
               fontWeight: 600,
               color: "var(--text-secondary, #aaa)",
-              marginBottom: 6,
+              marginBottom: 8,
             }}
           >
-            Session Policy
+            Auto-Accept Mode
           </div>
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="e.g. Allow all edits and tests. Deny git push."
-            rows={3}
-            style={{
-              width: "100%",
-              background: "var(--bg-primary, #1e1e1e)",
-              color: "var(--text-primary, #e5e5e5)",
-              border: "1px solid var(--border-subtle, #444)",
-              borderRadius: 4,
-              padding: 8,
-              fontSize: 12,
-              fontFamily: "inherit",
-              resize: "vertical",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
+
+          {/* Mode selector */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+            {(["off", "on", "allow-all"] as PolicyMode[]).map((m) => (
+              <button
+                key={m}
+                onClick={() => setMode(m)}
+                style={{
+                  flex: 1,
+                  background: mode === m ? "var(--accent, #0A84FF)" : "var(--bg-primary, #1e1e1e)",
+                  color: mode === m ? "#fff" : "var(--text-secondary, #aaa)",
+                  border: `1px solid ${mode === m ? "var(--accent, #0A84FF)" : "var(--border-subtle, #444)"}`,
+                  borderRadius: 4,
+                  padding: "4px 8px",
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                {m === "off" ? "Off" : m === "on" ? "Policy" : "Allow All"}
+              </button>
+            ))}
+          </div>
+
+          {/* Policy textarea only shown in "on" mode */}
+          {mode === "on" && (
+            <textarea
+              ref={textareaRef}
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="e.g. Allow all edits and tests. Deny git push."
+              rows={3}
+              style={{
+                width: "100%",
+                background: "var(--bg-primary, #1e1e1e)",
+                color: "var(--text-primary, #e5e5e5)",
+                border: "1px solid var(--border-subtle, #444)",
+                borderRadius: 4,
+                padding: 8,
+                fontSize: 12,
+                fontFamily: "inherit",
+                resize: "vertical",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          )}
+
+          {mode === "allow-all" && (
+            <div style={{ fontSize: 11, color: "var(--orange, #FF9F0A)", marginBottom: 4 }}>
+              All tool calls will be auto-accepted without asking.
+            </div>
+          )}
+
+          {mode === "off" && (
+            <div style={{ fontSize: 11, color: "var(--text-tertiary, #666)", marginBottom: 4 }}>
+              Normal permission dialogs will be shown.
+            </div>
+          )}
+
           <div
             style={{
               display: "flex",
-              justifyContent: "space-between",
+              justifyContent: "flex-end",
               marginTop: 8,
               gap: 6,
             }}
           >
             <button
-              onClick={handleClear}
+              onClick={() => setEditing(false)}
               style={{
                 background: "none",
-                border: "1px solid var(--red, #FF453A)",
-                color: "var(--red, #FF453A)",
+                border: "1px solid var(--border-subtle, #444)",
+                color: "var(--text-secondary, #aaa)",
                 borderRadius: 4,
                 padding: "4px 10px",
                 fontSize: 11,
                 cursor: "pointer",
               }}
             >
-              Clear
+              Cancel
             </button>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button
-                onClick={() => setEditing(false)}
-                style={{
-                  background: "none",
-                  border: "1px solid var(--border-subtle, #444)",
-                  color: "var(--text-secondary, #aaa)",
-                  borderRadius: 4,
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                }}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSave}
-                style={{
-                  background: "var(--accent, #0A84FF)",
-                  border: "none",
-                  color: "#fff",
-                  borderRadius: 4,
-                  padding: "4px 10px",
-                  fontSize: 11,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                Save (\u2318\u23CE)
-              </button>
-            </div>
+            <button
+              onClick={handleSave}
+              style={{
+                background: "var(--accent, #0A84FF)",
+                border: "none",
+                color: "#fff",
+                borderRadius: 4,
+                padding: "4px 10px",
+                fontSize: 11,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </button>
           </div>
           <div
             style={{
@@ -271,7 +320,7 @@ export function createPolicyBadgeExtension(): FrontendExtension {
     manifest: {
       id: "policy-badge",
       name: "Policy Badge",
-      version: "0.1.0",
+      version: "0.2.0",
       description: "Per-session auto-accept policy editor",
     },
     activate(ctx) {

@@ -212,12 +212,15 @@ function ContextMenu({
 
 function PolicyPopover({ sessionId, x, y, onClose }: { sessionId: string; x: number; y: number; onClose: () => void }) {
   const [draft, setDraft] = useState("");
+  const [mode, setMode] = useState<"off" | "on" | "allow-all">("off");
   const [loading, setLoading] = useState(true);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     invoke<string | null>("get_session_policy", { sessionId }).then((p) => {
-      setDraft(p ?? "");
+      if (!p || p.length === 0) { setMode("off"); setDraft(""); }
+      else if (p === "*") { setMode("allow-all"); setDraft(""); }
+      else { setMode("on"); setDraft(p); }
       setLoading(false);
     });
   }, [sessionId]);
@@ -231,9 +234,22 @@ function PolicyPopover({ sessionId, x, y, onClose }: { sessionId: string; x: num
   }, [onClose]);
 
   const handleSave = async () => {
-    await invoke("set_session_policy", { sessionId, policy: draft });
+    const policy = mode === "off" ? "" : mode === "allow-all" ? "*" : draft;
+    await invoke("set_session_policy", { sessionId, policy });
     onClose();
   };
+
+  const btnStyle = (active: boolean) => ({
+    flex: 1,
+    background: active ? "var(--accent, #0A84FF)" : "var(--bg-primary, #1e1e1e)",
+    color: active ? "#fff" : "var(--text-secondary, #aaa)",
+    border: `1px solid ${active ? "var(--accent, #0A84FF)" : "var(--border-subtle, #444)"}`,
+    borderRadius: 4,
+    padding: "4px 8px",
+    fontSize: 11,
+    fontWeight: 600 as const,
+    cursor: "pointer" as const,
+  });
 
   return (
     <div
@@ -241,37 +257,54 @@ function PolicyPopover({ sessionId, x, y, onClose }: { sessionId: string; x: num
       className="history-context-menu"
       style={{ top: y, left: x, padding: 12, width: 280 }}
     >
-      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary, #aaa)", marginBottom: 6 }}>
-        Session Policy
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary, #aaa)", marginBottom: 8 }}>
+        Auto-Accept Mode
       </div>
       {loading ? (
         <div style={{ fontSize: 11, color: "var(--text-tertiary, #666)" }}>Loading...</div>
       ) : (
         <>
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && e.metaKey) { e.preventDefault(); handleSave(); }
-              if (e.key === "Escape") onClose();
-            }}
-            placeholder="e.g. Allow all edits and tests. Deny git push."
-            rows={3}
-            autoFocus
-            style={{
-              width: "100%",
-              background: "var(--bg-primary, #1e1e1e)",
-              color: "var(--text-primary, #e5e5e5)",
-              border: "1px solid var(--border-subtle, #444)",
-              borderRadius: 4,
-              padding: 8,
-              fontSize: 12,
-              fontFamily: "inherit",
-              resize: "vertical",
-              outline: "none",
-              boxSizing: "border-box",
-            }}
-          />
+          <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+            <button onClick={() => setMode("off")} style={btnStyle(mode === "off")}>Off</button>
+            <button onClick={() => setMode("on")} style={btnStyle(mode === "on")}>Policy</button>
+            <button onClick={() => setMode("allow-all")} style={btnStyle(mode === "allow-all")}>Allow All</button>
+          </div>
+          {mode === "on" && (
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && e.metaKey) { e.preventDefault(); handleSave(); }
+                if (e.key === "Escape") onClose();
+              }}
+              placeholder="e.g. Allow all edits and tests. Deny git push."
+              rows={3}
+              autoFocus
+              style={{
+                width: "100%",
+                background: "var(--bg-primary, #1e1e1e)",
+                color: "var(--text-primary, #e5e5e5)",
+                border: "1px solid var(--border-subtle, #444)",
+                borderRadius: 4,
+                padding: 8,
+                fontSize: 12,
+                fontFamily: "inherit",
+                resize: "vertical",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+          )}
+          {mode === "allow-all" && (
+            <div style={{ fontSize: 11, color: "var(--orange, #FF9F0A)", marginBottom: 4 }}>
+              All tool calls will be auto-accepted without asking.
+            </div>
+          )}
+          {mode === "off" && (
+            <div style={{ fontSize: 11, color: "var(--text-tertiary, #666)", marginBottom: 4 }}>
+              Normal permission dialogs will be shown.
+            </div>
+          )}
           <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, gap: 6 }}>
             <button
               onClick={onClose}
