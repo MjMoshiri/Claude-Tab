@@ -71,6 +71,9 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
   const [dangerouslySkipPermissions, setDangerouslySkipPermissions] = useState(
     profile?.dangerously_skip_permissions || false
   );
+  const [autoAcceptPolicy, setAutoAcceptPolicy] = useState(
+    profile?.auto_accept_policy || ""
+  );
 
   // Auto-detect inputs from {{key}} in prompt template
   useEffect(() => {
@@ -167,6 +170,7 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
       tags: profile?.tags || [],
       is_default: isDefault,
       dangerously_skip_permissions: dangerouslySkipPermissions || undefined,
+      auto_accept_policy: autoAcceptPolicy.trim() || undefined,
     };
 
     onSave(newProfile);
@@ -395,6 +399,19 @@ export function ProfileEditor({ profile, onSave, onClose }: ProfileEditorProps) 
                 <SkillPicker
                   selectedSkills={selectedSkills}
                   onSelectionChange={setSelectedSkills}
+                />
+              </div>
+              <div className="profiles-field">
+                <label className="profiles-field-label">
+                  Auto-Accept Policy
+                  <span className="profiles-field-hint">Default policy for sessions launched with this profile</span>
+                </label>
+                <textarea
+                  className="profiles-field-textarea"
+                  placeholder="e.g. Allow all edits and tests. Deny git push."
+                  value={autoAcceptPolicy}
+                  onChange={(e) => setAutoAcceptPolicy(e.target.value)}
+                  rows={2}
                 />
               </div>
               <div className="profiles-field">

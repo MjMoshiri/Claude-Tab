@@ -12,8 +12,26 @@ use claude_tabs_pty::PtyError;
 use claude_tabs_storage::{ClaudeSession, DirectoryPreference, SessionFilter, SessionMessage, SessionMetadata, StorageError};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::path::PathBuf;
 use tauri::State;
 use tracing::{debug, info};
+
+fn policy_dir() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".claude").join("auto-accept-policies")
+}
+
+/// Write a per-session policy file to ~/.claude/auto-accept-policies/{session_id}
+fn write_policy_file(session_id: &str, policy: &str) -> std::io::Result<()> {
+    let dir = policy_dir();
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join(session_id), policy)
+}
+
+/// Read a per-session policy file from ~/.claude/auto-accept-policies/{session_id}
+fn read_policy_file(session_id: &str) -> std::io::Result<String> {
+    std::fs::read_to_string(policy_dir().join(session_id))
+}
 
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
@@ -195,13 +213,16 @@ pub async fn create_session(
         );
     }
 
-    // Auto-accept: inject env vars when enabled
+    // Auto-accept: inject env vars when enabled and write per-session policy file
     if let Some(serde_json::Value::Bool(true)) = state.config.get("autoAccept.enabled").await {
-        if let Some(serde_json::Value::String(policy)) = state.config.get("autoAccept.defaultPolicy").await {
-            if !policy.is_empty() {
-                env.insert("AUTO_ACCEPT_POLICY".to_string(), policy);
-            }
+        let default_policy = state.config.get("autoAccept.defaultPolicy").await
+            .and_then(|v| v.as_str().map(String::from))
+            .unwrap_or_default();
+        if !default_policy.is_empty() {
+            env.insert("AUTO_ACCEPT_POLICY".to_string(), default_policy.clone());
         }
+        // Always create policy file (empty if no default) so the hook has a file to read
+        let _ = write_policy_file(&session_id, &default_policy);
         if let Some(serde_json::Value::String(model)) = state.config.get("autoAccept.model").await {
             env.insert("AUTO_ACCEPT_MODEL".to_string(), model);
         }
@@ -894,6 +915,13 @@ pub async fn launch_profile(
         )
         .await;
 
+    // Apply profile's auto-accept policy if set
+    if let Some(ref policy) = profile.auto_accept_policy {
+        if !policy.is_empty() {
+            let _ = write_policy_file(&result.id, policy);
+        }
+    }
+
     Ok(result)
 }
 
@@ -918,6 +946,21 @@ pub async fn delete_pack(
     pack_id: String,
 ) -> Result<(), CommandError> {
     state.pack_store.delete(&pack_id).await.map_err(|e| CommandError::Internal(e))
+}
+
+// --- Session policy commands ---
+
+#[tauri::command]
+pub async fn get_session_policy(session_id: String) -> Result<Option<String>, CommandError> {
+    match read_policy_file(&session_id) {
+        Ok(content) => Ok(Some(content)),
+        Err(_) => Ok(None),
+    }
+}
+
+#[tauri::command]
+pub async fn set_session_policy(session_id: String, policy: String) -> Result<(), CommandError> {
+    write_policy_file(&session_id, &policy).map_err(|e| CommandError::Internal(e.to_string()))
 }
 
 // ============================================================================

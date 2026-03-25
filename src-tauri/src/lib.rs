@@ -114,6 +114,9 @@ pub fn run() {
             commands::read_system_prompt,
             commands::save_system_prompt,
             commands::delete_system_prompt,
+            // Session policy
+            commands::get_session_policy,
+            commands::set_session_policy,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

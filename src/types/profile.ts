@@ -31,6 +31,7 @@ export interface Profile {
   tags: string[];
   is_default?: boolean;
   dangerously_skip_permissions?: boolean;
+  auto_accept_policy?: string;
 }
 
 export interface Pack {

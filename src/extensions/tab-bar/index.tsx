@@ -68,6 +68,7 @@ function ContextMenu({
   onClose: () => void;
   onRefresh: () => void;
   onRename: (id: string) => void;
+  onSetPolicy: (id: string) => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState({ x, y });
@@ -98,6 +99,11 @@ function ContextMenu({
 
   const handleRename = () => {
     onRename(sessionId);
+    onClose();
+  };
+
+  const handleSetPolicy = () => {
+    onSetPolicy(sessionId);
     onClose();
   };
 
@@ -193,9 +199,111 @@ function ContextMenu({
           View History Chain
         </button>
       )}
+      <button type="button" role="menuitem" className="history-context-item" onClick={handleSetPolicy}>
+        Set Policy
+      </button>
       <button type="button" role="menuitem" className="history-context-item" onClick={handleClose}>
         Close
       </button>
+    </div>
+  );
+}
+
+function PolicyPopover({ sessionId, x, y, onClose }: { sessionId: string; x: number; y: number; onClose: () => void }) {
+  const [draft, setDraft] = useState("");
+  const [loading, setLoading] = useState(true);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    invoke<string | null>("get_session_policy", { sessionId }).then((p) => {
+      setDraft(p ?? "");
+      setLoading(false);
+    });
+  }, [sessionId]);
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [onClose]);
+
+  const handleSave = async () => {
+    await invoke("set_session_policy", { sessionId, policy: draft });
+    onClose();
+  };
+
+  return (
+    <div
+      ref={ref}
+      className="history-context-menu"
+      style={{ top: y, left: x, padding: 12, width: 280 }}
+    >
+      <div style={{ fontSize: 11, fontWeight: 600, color: "var(--text-secondary, #aaa)", marginBottom: 6 }}>
+        Session Policy
+      </div>
+      {loading ? (
+        <div style={{ fontSize: 11, color: "var(--text-tertiary, #666)" }}>Loading...</div>
+      ) : (
+        <>
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && e.metaKey) { e.preventDefault(); handleSave(); }
+              if (e.key === "Escape") onClose();
+            }}
+            placeholder="e.g. Allow all edits and tests. Deny git push."
+            rows={3}
+            autoFocus
+            style={{
+              width: "100%",
+              background: "var(--bg-primary, #1e1e1e)",
+              color: "var(--text-primary, #e5e5e5)",
+              border: "1px solid var(--border-subtle, #444)",
+              borderRadius: 4,
+              padding: 8,
+              fontSize: 12,
+              fontFamily: "inherit",
+              resize: "vertical",
+              outline: "none",
+              boxSizing: "border-box",
+            }}
+          />
+          <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8, gap: 6 }}>
+            <button
+              onClick={onClose}
+              style={{
+                background: "none",
+                border: "1px solid var(--border-subtle, #444)",
+                color: "var(--text-secondary, #aaa)",
+                borderRadius: 4,
+                padding: "4px 10px",
+                fontSize: 11,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSave}
+              style={{
+                background: "var(--accent, #0A84FF)",
+                border: "none",
+                color: "#fff",
+                borderRadius: 4,
+                padding: "4px 10px",
+                fontSize: 11,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              Save
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
@@ -258,6 +366,7 @@ function SidePanel() {
     sessionState: string;
     previousSessionId: string | null;
   } | null>(null);
+  const [policyEditor, setPolicyEditor] = useState<{sessionId: string; x: number; y: number} | null>(null);
 
   // Apply sidebar width/visibility to the parent .app-sidebar element
   useEffect(() => {
@@ -815,6 +924,15 @@ function SidePanel() {
           onClose={() => setContextMenu(null)}
           onRefresh={refresh}
           onRename={startRename}
+          onSetPolicy={(id) => { setPolicyEditor({ sessionId: id, x: contextMenu!.x, y: contextMenu!.y }); }}
+        />
+      )}
+      {policyEditor && (
+        <PolicyPopover
+          sessionId={policyEditor.sessionId}
+          x={policyEditor.x}
+          y={policyEditor.y}
+          onClose={() => setPolicyEditor(null)}
         />
       )}
       <ResizeHandle onResize={handleResize} />

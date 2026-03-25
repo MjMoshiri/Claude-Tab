@@ -68,6 +68,8 @@ pub struct Profile {
     pub is_default: bool,
     #[serde(default)]
     pub dangerously_skip_permissions: bool,
+    #[serde(default)]
+    pub auto_accept_policy: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
