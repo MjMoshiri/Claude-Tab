@@ -35,6 +35,8 @@ export function ProfilesPanel() {
   const [showPacks, setShowPacks] = useState(false);
   const [editingPack, setEditingPack] = useState<Pack | null>(null);
   const [showPackEditor, setShowPackEditor] = useState(false);
+  const [expandedPackId, setExpandedPackId] = useState<string | null>(null);
+  const [packInputValues, setPackInputValues] = useState<Record<string, Record<string, string>>>({});
   const [batchMode, setBatchMode] = useState(false);
   const [batchDelimiter, setBatchDelimiter] = useState("-");
   const [batchRawText, setBatchRawText] = useState<Record<string, string>>({});
@@ -254,16 +256,64 @@ export function ProfilesPanel() {
     }
   };
 
+  const handlePackCardClick = (pack: Pack) => {
+    // Check if any profile in the pack has inputs
+    const packProfiles = pack.profile_ids
+      .map((id) => profiles.find((p) => p.id === id))
+      .filter((p): p is Profile => !!p);
+    const needsInputs = packProfiles.some((p) => p.inputs.length > 0);
+
+    if (!needsInputs) {
+      handleLaunchPack(pack);
+      return;
+    }
+
+    if (expandedPackId === pack.id) {
+      setExpandedPackId(null);
+      return;
+    }
+
+    // Initialize input values with defaults for each profile
+    const defaults: Record<string, Record<string, string>> = {};
+    for (const profile of packProfiles) {
+      defaults[profile.id] = {};
+      for (const input of profile.inputs) {
+        if (input.default) {
+          defaults[profile.id][input.key] = input.default;
+        }
+      }
+    }
+    setPackInputValues(defaults);
+    setExpandedPackId(pack.id);
+  };
+
+  const handlePackInputChange = (profileId: string, key: string, value: string) => {
+    setPackInputValues((prev) => ({
+      ...prev,
+      [profileId]: { ...prev[profileId], [key]: value },
+    }));
+  };
+
   const handleLaunchPack = async (pack: Pack) => {
+    // Validate required inputs
+    for (const profileId of pack.profile_ids) {
+      const profile = profiles.find((p) => p.id === profileId);
+      if (!profile) continue;
+      for (const input of profile.inputs) {
+        if (input.required && !packInputValues[profileId]?.[input.key]?.trim()) {
+          return;
+        }
+      }
+    }
+
     setLaunching(true);
     try {
       for (const profileId of pack.profile_ids) {
         const profile = profiles.find((p) => p.id === profileId);
         if (!profile) continue;
-        // Launch each profile with empty inputs (profiles in packs should have defaults or no required inputs)
         const request: ProfileLaunchRequest = {
           profile_id: profileId,
-          input_values: {},
+          input_values: packInputValues[profileId] || {},
         };
         await invoke("launch_profile", { request });
       }
@@ -576,9 +626,17 @@ export function ProfilesPanel() {
         ) : (
           <>
             <div className="profiles-list">
-              {packs.map((pack) => (
+              {packs.map((pack) => {
+                const packProfiles = pack.profile_ids
+                  .map((id) => profiles.find((p) => p.id === id))
+                  .filter((p): p is Profile => !!p);
+                const hasInputs = packProfiles.some((p) => p.inputs.length > 0);
+                return (
                 <div key={pack.id} className="profiles-card-wrapper">
-                  <div className="profiles-card">
+                  <div
+                    className={`profiles-card ${expandedPackId === pack.id ? "profiles-card-expanded" : ""}`}
+                    onClick={() => handlePackCardClick(pack)}
+                  >
                     <div className="profiles-card-header">
                       <div className="profiles-card-info">
                         <span className="profiles-card-name">{pack.name}</span>
@@ -591,24 +649,26 @@ export function ProfilesPanel() {
                         </span>
                       </div>
                       <div className="profiles-card-actions">
-                        <button
-                          className="profiles-card-action profiles-card-action-launch"
-                          onClick={() => handleLaunchPack(pack)}
-                          title="Launch All"
-                          disabled={launching}
-                        >
-                          &#9654;
-                        </button>
+                        {!hasInputs && (
+                          <button
+                            className="profiles-card-action profiles-card-action-launch"
+                            onClick={(e) => { e.stopPropagation(); handleLaunchPack(pack); }}
+                            title="Launch All"
+                            disabled={launching}
+                          >
+                            &#9654;
+                          </button>
+                        )}
                         <button
                           className="profiles-card-action"
-                          onClick={() => handleEditPack(pack)}
+                          onClick={(e) => { e.stopPropagation(); handleEditPack(pack); }}
                           title="Edit"
                         >
                           &#9998;
                         </button>
                         <button
                           className="profiles-card-action profiles-card-action-danger"
-                          onClick={(e) => handleDeletePack(e, pack.id)}
+                          onClick={(e) => { e.stopPropagation(); handleDeletePack(e, pack.id); }}
                           title="Delete"
                         >
                           &times;
@@ -616,8 +676,43 @@ export function ProfilesPanel() {
                       </div>
                     </div>
                   </div>
+                  {expandedPackId === pack.id && (
+                    <div className="profiles-launch-form">
+                      {packProfiles.map((profile) =>
+                        profile.inputs.length > 0 ? (
+                          <div key={profile.id} className="profiles-pack-profile-inputs">
+                            <div className="profiles-section-header">
+                              <span>{profile.name}</span>
+                            </div>
+                            {profile.inputs.map((input) => (
+                              <div key={input.key} className="profiles-field">
+                                <label className="profiles-field-label">
+                                  {input.label}
+                                  {input.required && <span className="profiles-required">*</span>}
+                                </label>
+                                <InputField
+                                  input={input}
+                                  value={packInputValues[profile.id]?.[input.key] || ""}
+                                  onChange={(v) => handlePackInputChange(profile.id, input.key, v)}
+                                  onEnter={() => handleLaunchPack(pack)}
+                                />
+                              </div>
+                            ))}
+                          </div>
+                        ) : null
+                      )}
+                      <button
+                        className="profiles-launch-btn"
+                        onClick={() => handleLaunchPack(pack)}
+                        disabled={launching}
+                      >
+                        {launching ? "Launching..." : "Launch All"}
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
               {packs.length === 0 && (
                 <div className="profiles-empty">
                   No packs yet. Create one to group profiles together.
