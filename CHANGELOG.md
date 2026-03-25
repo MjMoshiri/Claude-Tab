@@ -1,10 +1,27 @@
 # Changelog
 
-## [Unreleased]
+## [1.2.0] - 2026-03-25
 
 ### Added
-- **Per-session auto-accept policy**: Tiny "Policy" badge in the tab bar (top-left) lets you set, edit, and clear auto-accept policies per session. Changes take effect mid-session via file-based policy (`~/.claude/auto-accept-policies/{session_id}`), no restart needed. Requires the [claude-auto-accept](https://github.com/MjMoshiri/claude-auto-accept) plugin.
-- **Auto-update support**: Added Tauri updater plugin. Check for updates in Settings > Updates. Pulls from GitHub Releases (requires release infrastructure setup: signing key + CI publishing `latest.json`).
+- **Off / Policy / Allow All toggle**: Three-state mode selector in the policy badge and context menu popover. Off = normal dialogs, Policy = LLM judge, Allow All = auto-accept everything.
+- **Auto-accept policy in profiles**: Profiles can now have a default auto-accept policy that gets applied when launching a session.
+- **Right-click "Set Policy"**: Context menu entry on sessions to quickly set or change the auto-accept policy inline.
+- **Empty policy file on session create**: When auto-accept is enabled, an empty policy file is always created for new sessions so the hook has a file to read.
+
+### Changed
+- Plugin behavior is now allow/ask only — the plugin never denies on its own, it either auto-allows or falls through to the normal permission dialog.
+
+## [1.1.0] - 2026-03-25
+
+### Added
+- **Per-session auto-accept policy**: Policy badge in the tab bar lets you set, edit, and clear auto-accept policies per session. Changes take effect mid-session via file-based policy (`~/.claude/auto-accept-policies/{session_id}`).
+- **Auto-accept settings**: Enable/disable auto-accept, set default policy, choose judge model, and select mode (permission only vs all tool calls) in Settings.
+- **Auto-update support**: Tauri updater plugin with signed releases and `latest.json` for OTA updates.
 
 ### Fixed
-- **Double session on profile launch**: Rapid Enter key or double-click could spawn two sessions from the same profile. Added ref-based guard to prevent concurrent launches in both the Quick Launcher and Profiles panel.
+- **Double session on profile launch**: Rapid Enter key or double-click could spawn two sessions from the same profile.
+
+## [1.0.0] - 2026-03-24
+
+### Added
+- Initial release with multi-session tab management, profiles, auto-switch, and Claude Code integration.
