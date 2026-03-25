@@ -59,6 +59,7 @@ function ContextMenu({
   onClose,
   onRefresh,
   onRename,
+  onSetPolicy,
 }: {
   x: number;
   y: number;

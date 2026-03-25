@@ -33,6 +33,15 @@ fn read_policy_file(session_id: &str) -> std::io::Result<String> {
     std::fs::read_to_string(policy_dir().join(session_id))
 }
 
+/// Remove a per-session policy file
+fn remove_policy_file(session_id: &str) -> std::io::Result<()> {
+    let path = policy_dir().join(session_id);
+    if path.exists() {
+        std::fs::remove_file(path)?;
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
     #[error("Session not found: {0}")]
@@ -1141,49 +1150,4 @@ pub fn delete_system_prompt(name: String) -> Result<(), CommandError> {
         .map_err(CommandError::Internal)
 }
 
-// ============================================================================
-// Auto-Accept Policy Commands
-// ============================================================================
-
-fn policy_dir() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-    std::path::PathBuf::from(home)
-        .join(".claude")
-        .join("auto-accept-policies")
-}
-
-fn write_policy_file(session_id: &str, policy: &str) -> Result<(), std::io::Error> {
-    let dir = policy_dir();
-    std::fs::create_dir_all(&dir)?;
-    std::fs::write(dir.join(session_id), policy)
-}
-
-fn remove_policy_file(session_id: &str) -> Result<(), std::io::Error> {
-    let path = policy_dir().join(session_id);
-    if path.exists() {
-        std::fs::remove_file(path)?;
-    }
-    Ok(())
-}
-
-#[tauri::command]
-pub fn set_session_policy(session_id: String, policy: String) -> Result<(), CommandError> {
-    if policy.is_empty() {
-        remove_policy_file(&session_id).map_err(|e| CommandError::Internal(e.to_string()))
-    } else {
-        write_policy_file(&session_id, &policy).map_err(|e| CommandError::Internal(e.to_string()))
-    }
-}
-
-#[tauri::command]
-pub fn get_session_policy(session_id: String) -> Result<Option<String>, CommandError> {
-    let path = policy_dir().join(&session_id);
-    if path.exists() {
-        let content = std::fs::read_to_string(path)
-            .map_err(|e| CommandError::Internal(e.to_string()))?;
-        Ok(if content.is_empty() { None } else { Some(content) })
-    } else {
-        Ok(None)
-    }
-}
 
