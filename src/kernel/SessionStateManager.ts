@@ -46,6 +46,7 @@ export class SessionStateManager implements ISessionStateManager {
   };
 
   private focusManager: IFocusManager | null = null;
+  private configChangedHandler: ((e: Event) => void) | null = null;
 
   setFocusManager(focusManager: IFocusManager): void {
     this.focusManager = focusManager;
@@ -60,6 +61,16 @@ export class SessionStateManager implements ISessionStateManager {
   }
 
   async init(): Promise<void> {
+    this.syncConfigFromStorage();
+
+    this.configChangedHandler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.key?.startsWith("autoFocus.")) {
+        this.syncConfigFromStorage();
+      }
+    };
+    window.addEventListener("config-changed", this.configChangedHandler);
+
     this.unsubCoreEvent = await listen<{ topic: string; payload: Record<string, unknown> }>(
       "core-event",
       (e) => {
@@ -119,6 +130,10 @@ export class SessionStateManager implements ISessionStateManager {
 
   updateConfig(config: Partial<typeof this.config>): void {
     this.config = { ...this.config, ...config };
+    if (!this.config.enabled && this._state === "showing_toast") {
+      this._toastState = null;
+      this.transitionTo("idle");
+    }
   }
 
   checkInactivity(inactivitySeconds: number): void {
@@ -181,6 +196,11 @@ export class SessionStateManager implements ISessionStateManager {
     if (this.refreshDebounceTimeout) {
       clearTimeout(this.refreshDebounceTimeout);
       this.refreshDebounceTimeout = null;
+    }
+
+    if (this.configChangedHandler) {
+      window.removeEventListener("config-changed", this.configChangedHandler);
+      this.configChangedHandler = null;
     }
 
     this.listeners.clear();
@@ -269,6 +289,21 @@ export class SessionStateManager implements ISessionStateManager {
         console.warn("[SessionStateManager] Debounced refresh failed:", err);
       });
     }, 100);
+  }
+
+  private syncConfigFromStorage(): void {
+    const enabled = this.readLocalStorage<boolean>("autoFocus.tabAutoSwitch", true);
+    const inactivitySeconds = this.readLocalStorage<number>("autoFocus.inactivitySeconds", 5);
+    const countdownSeconds = this.readLocalStorage<number>("autoFocus.countdownSeconds", 3);
+    this.updateConfig({ enabled, inactivitySeconds, countdownSeconds });
+  }
+
+  private readLocalStorage<T>(key: string, defaultValue: T): T {
+    try {
+      const raw = localStorage.getItem(`config.${key}`);
+      if (raw !== null) return JSON.parse(raw) as T;
+    } catch { /* ignore parse errors */ }
+    return defaultValue;
   }
 
   private async refreshSessions(): Promise<void> {

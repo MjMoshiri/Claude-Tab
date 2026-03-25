@@ -15,6 +15,7 @@ import type { IFocusManager } from "../../types/kernel";
 
 let focusManager: IFocusManager | null = null;
 let unsubCoreEvent: (() => void) | null = null;
+let configChangedHandler: EventListener | null = null;
 
 export function createWindowFocusExtension(): FrontendExtension {
   return {
@@ -54,6 +55,10 @@ export function createWindowFocusExtension(): FrontendExtension {
       if (unsubCoreEvent) {
         unsubCoreEvent();
         unsubCoreEvent = null;
+      }
+      if (configChangedHandler) {
+        window.removeEventListener("config-changed", configChangedHandler);
+        configChangedHandler = null;
       }
       focusManager = null;
     },
@@ -135,10 +140,11 @@ async function syncConfigToLocalStorage() {
     }
   }
 
-  // Listen for config changes and update localStorage
-  window.addEventListener("config-changed", ((e: CustomEvent<{ key: string; value: unknown }>) => {
+  // Listen for config changes and update localStorage (store ref for cleanup)
+  configChangedHandler = ((e: CustomEvent<{ key: string; value: unknown }>) => {
     if (e.detail && e.detail.key && keys.includes(e.detail.key)) {
       localStorage.setItem(`config.${e.detail.key}`, JSON.stringify(e.detail.value));
     }
-  }) as EventListener);
+  }) as EventListener;
+  window.addEventListener("config-changed", configChangedHandler);
 }

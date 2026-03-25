@@ -67,6 +67,7 @@ export function HistorySection({ onResume, onFork }: HistorySectionProps) {
 
     let mounted = true;
     const unsubs: Array<() => void> = [];
+    let delayedRefreshTimeout: ReturnType<typeof setTimeout> | null = null;
 
     // Refresh on session create/close (Claude Code updates sessions-index.json)
     listen("core-event", (e: { payload: { topic: string } }) => {
@@ -75,7 +76,7 @@ export function HistorySection({ onResume, onFork }: HistorySectionProps) {
         loadSessions();
         // Refresh again after delay - Claude Code may update files asynchronously
         if (e.payload.topic === "session.created") {
-          setTimeout(() => { if (mounted) loadSessions(); }, 2000);
+          delayedRefreshTimeout = setTimeout(() => { if (mounted) loadSessions(); }, 2000);
         }
       }
     }).then((u) => {
@@ -83,7 +84,11 @@ export function HistorySection({ onResume, onFork }: HistorySectionProps) {
       unsubs.push(u);
     });
 
-    return () => { mounted = false; unsubs.forEach((u) => u()); };
+    return () => {
+      mounted = false;
+      unsubs.forEach((u) => u());
+      if (delayedRefreshTimeout) clearTimeout(delayedRefreshTimeout);
+    };
   }, [loadSessions, loadPreferences]);
 
   const handleSessionContextMenu = (e: React.MouseEvent, session: ClaudeSession) => {

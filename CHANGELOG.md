@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.3.0] - 2026-03-25
+
+### Fixed
+- **Settings not persisting**: Auto-switch settings now take effect immediately — SessionStateManager reads config from storage on init and listens for changes.
+- **Auto-switch popup ignoring disabled setting**: Disabling "Auto-switch to Your Turn tabs" now actually stops the countdown toast from appearing.
+- **Profile editor closing on outside click**: Clicking outside the editor (e.g. during window resize) no longer dismisses the profile/pack editor panel.
+- **Listener leak in `useSession`**: Tauri event listener now properly cleaned up if component unmounts before async `listen()` resolves.
+- **Event listener leak in window-focus extension**: `config-changed` handler is now removed on deactivate instead of accumulating.
+- **Listener leak in PolicyBadge**: Tauri listener cleaned up on early unmount; async `invoke` calls guarded against dead state updates.
+- **Uncancellable timeout in HistorySection**: Delayed session refresh timeout now cleared on unmount.
+
 ## [1.2.0] - 2026-03-25
 
 ### Added

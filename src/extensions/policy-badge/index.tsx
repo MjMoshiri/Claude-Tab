@@ -50,7 +50,10 @@ function PolicyBadge() {
           );
         }
       },
-    ).then((u) => unsubs.push(u));
+    ).then((u) => {
+      if (!mounted) { u(); return; }
+      unsubs.push(u);
+    });
     return () => {
       mounted = false;
       unsubs.forEach((u) => u());
@@ -63,12 +66,15 @@ function PolicyBadge() {
       setPolicy(null);
       return;
     }
+    let mounted = true;
     invoke<string | null>("get_session_policy", {
       sessionId: activeId,
     }).then((p) => {
+      if (!mounted) return;
       setPolicy(p);
       setMode(deriveMode(p));
     });
+    return () => { mounted = false; };
   }, [activeId]);
 
   // Close popover on outside click

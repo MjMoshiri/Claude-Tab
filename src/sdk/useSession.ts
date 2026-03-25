@@ -15,10 +15,12 @@ export function useSession() {
   }, []);
 
   useEffect(() => {
+    let mounted = true;
     refresh();
 
     let unlisten: (() => void) | null = null;
     listen<{ topic: string; payload: Record<string, unknown> }>("core-event", (e) => {
+      if (!mounted) return;
       const { topic } = e.payload;
       if (
         topic === "session.created" ||
@@ -31,10 +33,12 @@ export function useSession() {
         refresh();
       }
     }).then((u) => {
+      if (!mounted) { u(); return; }
       unlisten = u;
     });
 
     return () => {
+      mounted = false;
       if (unlisten) unlisten();
     };
   }, [refresh]);

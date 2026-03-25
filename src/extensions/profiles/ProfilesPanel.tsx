@@ -352,8 +352,8 @@ export function ProfilesPanel() {
 
   if (showEditor) {
     return (
-      <div className="profiles-backdrop" onClick={close} role="presentation">
-        <div className="profiles-panel profiles-panel-wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit profile" aria-modal="true">
+      <div className="profiles-backdrop" role="presentation">
+        <div className="profiles-panel profiles-panel-wide" role="dialog" aria-label="Edit profile" aria-modal="true">
           <ProfileEditor
             profile={editingProfile}
             onSave={handleEditorSave}
@@ -366,8 +366,8 @@ export function ProfilesPanel() {
 
   if (showPackEditor) {
     return (
-      <div className="profiles-backdrop" onClick={close} role="presentation">
-        <div className="profiles-panel profiles-panel-wide" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit pack" aria-modal="true">
+      <div className="profiles-backdrop" role="presentation">
+        <div className="profiles-panel profiles-panel-wide" role="dialog" aria-label="Edit pack" aria-modal="true">
           <PackEditor
             pack={editingPack}
             profiles={profiles}
