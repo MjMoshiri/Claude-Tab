@@ -20,6 +20,7 @@ A tab-based terminal manager for running multiple [Claude Code](https://docs.ant
 - **Dangerous Mode** — Per-profile toggle to pass `--dangerously-skip-permissions` to the Claude CLI
 - **Keyboard-First** — Navigate and manage sessions without the mouse (`Cmd+1-9` for quick switch)
 - **Auto-Accept** — LLM-powered permission gate via [claude-auto-accept](https://github.com/MjMoshiri/claude-auto-accept); set a natural language policy per session to auto-accept or deny tool calls
+- **Telegram Remote Launch** — Spawn sessions from your phone via a per-machine Telegram bot; get a remote control link back in chat
 - **Extension System** — Plugin architecture on both frontend (React) and backend (Rust)
 
 ## Architecture
@@ -40,7 +41,8 @@ Frontend (React/TypeScript)          Backend (Rust/Tokio)
 │  ├─ profiles            │         │  ├─ claude-hooks        │
 │  ├─ settings            │         │  ├─ auto-switch         │
 │  └─ status-bar          │         │  ├─ output-parser       │
-│                         │         │  └─ system-notify       │
+│                         │         │  ├─ system-notify       │
+│                         │         │  └─ telegram-bot        │
 └─────────────────────────┘         └─────────────────────────┘
 ```
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.0] - 2026-03-28
+
+### Added
+- **Telegram bot remote launcher**: Spawn Claude Tabs sessions from your phone via a per-machine Telegram bot. Pair your device once, then tap a profile to launch a session and get a remote control link back in Telegram.
+- **Settings UI for Telegram**: Bot token configuration with BotFather link, device pairing with 6-char verification code, connect/disconnect status.
+- **`open_url` Tauri command**: Generic command for opening external URLs from the webview.
+
 ## [1.3.1] - 2026-03-25
 
 ### Fixed
