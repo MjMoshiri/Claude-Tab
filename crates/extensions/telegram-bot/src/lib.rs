@@ -165,11 +165,29 @@ pub fn create_bot_future(
 }
 
 async fn run_bot_loop(deps: BotDeps) {
+    let mut caffeinate: Option<std::process::Child> = None;
+
     loop {
         let token = deps.config.get_string("telegram.botToken").await;
 
         match token {
             Some(t) if !t.is_empty() => {
+                // Prevent macOS from sleeping while bot is active.
+                // -i = prevent idle sleep, -s = prevent system sleep on AC power,
+                // -w = exit when our process exits (no orphan caffeinate).
+                if caffeinate.as_mut().map_or(true, |c| c.try_wait().ok().flatten().is_some()) {
+                    match std::process::Command::new("caffeinate")
+                        .args(["-is", "-w", &std::process::id().to_string()])
+                        .spawn()
+                    {
+                        Ok(child) => {
+                            info!("Started caffeinate to prevent system sleep while Telegram bot is active");
+                            caffeinate = Some(child);
+                        }
+                        Err(e) => warn!("Failed to start caffeinate: {}", e),
+                    }
+                }
+
                 info!("Telegram bot token found, starting bot...");
                 if let Err(e) = run_bot(t, deps.clone()).await {
                     error!("Telegram bot exited with error: {}", e);
@@ -178,6 +196,12 @@ async fn run_bot_loop(deps: BotDeps) {
                 tokio::time::sleep(std::time::Duration::from_secs(10)).await;
             }
             _ => {
+                // Kill caffeinate when bot is inactive (no token)
+                if let Some(mut child) = caffeinate.take() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    info!("Stopped caffeinate — no Telegram bot token configured");
+                }
                 // No token configured, poll config every 5 seconds
                 tokio::time::sleep(std::time::Duration::from_secs(5)).await;
             }

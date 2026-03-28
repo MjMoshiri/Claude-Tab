@@ -4,6 +4,7 @@ set -euo pipefail
 # Usage: ./scripts/release.sh [patch|minor|major]
 # Builds locally, then tags + publishes to GitHub only on success.
 
+export PATH="$HOME/.cargo/bin:$PATH"
 BUMP="${1:-patch}"
 TARGET="aarch64-apple-darwin"
 REPO="MjMoshiri/Claude-Tab"
@@ -16,6 +17,20 @@ esac
 
 command -v gh >/dev/null || { echo "gh CLI required"; exit 1; }
 command -v jq >/dev/null || { echo "jq required"; exit 1; }
+
+# Auto-load signing key if not already set
+KEY_FILE="$HOME/.tauri/claude-tabs.key"
+if [ -z "${TAURI_SIGNING_PRIVATE_KEY:-}" ]; then
+  if [ -f "$KEY_FILE" ]; then
+    export TAURI_SIGNING_PRIVATE_KEY=$(cat "$KEY_FILE")
+    export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=""
+    echo "==> Loaded signing key from $KEY_FILE"
+  else
+    echo "Error: TAURI_SIGNING_PRIVATE_KEY is not set and $KEY_FILE not found."
+    echo "Generate a key with: npx tauri signer generate -w ~/.tauri/claude-tabs.key --ci"
+    exit 1
+  fi
+fi
 
 # Ensure clean working tree
 if ! git diff --quiet || ! git diff --cached --quiet; then
@@ -64,7 +79,7 @@ npx tauri build --target "$TARGET"
 echo "==> Build succeeded!"
 
 # ── Locate artifacts ──────────────────────────────────────────────────
-BUNDLE_DIR="src-tauri/target/$TARGET/release/bundle"
+BUNDLE_DIR="target/$TARGET/release/bundle"
 DMG=$(find "$BUNDLE_DIR/dmg" -name '*.dmg' -type f 2>/dev/null | head -1)
 TAR=$(find "$BUNDLE_DIR/macos" -name '*.app.tar.gz' ! -name '*.sig' -type f 2>/dev/null | head -1)
 SIG=$(find "$BUNDLE_DIR/macos" -name '*.app.tar.gz.sig' -type f 2>/dev/null | head -1)
@@ -104,12 +119,17 @@ gh release create "$TAG" \
 echo "==> Release $TAG created"
 
 # ── Generate and upload latest.json for auto-updater ──────────────────
-if [ -n "$SIG" ] && [ -n "$TAR" ]; then
-  SIG_CONTENT=$(cat "$SIG")
-  TAR_NAME=$(basename "$TAR")
-  TAR_URL="https://github.com/$REPO/releases/download/$TAG/$TAR_NAME"
+if [ -z "$SIG" ] || [ -z "$TAR" ]; then
+  echo "Error: missing .sig or .tar.gz artifact — updater won't work."
+  echo "Is TAURI_SIGNING_PRIVATE_KEY set correctly?"
+  exit 1
+fi
 
-  cat > /tmp/latest.json <<ENDJSON
+SIG_CONTENT=$(cat "$SIG")
+TAR_NAME=$(basename "$TAR")
+TAR_URL="https://github.com/$REPO/releases/download/$TAG/$TAR_NAME"
+
+cat > /tmp/latest.json <<ENDJSON
 {
   "version": "$NEW",
   "notes": "See CHANGELOG.md for details.",
@@ -123,10 +143,9 @@ if [ -n "$SIG" ] && [ -n "$TAR" ]; then
 }
 ENDJSON
 
-  gh release upload "$TAG" /tmp/latest.json --repo "$REPO" --clobber
-  rm -f /tmp/latest.json
-  echo "==> latest.json uploaded"
-fi
+gh release upload "$TAG" /tmp/latest.json --repo "$REPO" --clobber
+rm -f /tmp/latest.json
+echo "==> latest.json uploaded"
 
 echo ""
 echo "Done! https://github.com/$REPO/releases/tag/$TAG"

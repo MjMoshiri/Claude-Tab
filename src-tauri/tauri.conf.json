@@ -19,6 +19,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "createUpdaterArtifacts": "v1Compatible",
     "macOS": {
       "entitlements": "Entitlements.plist",
       "infoPlist": "Info.plist"
@@ -48,7 +49,7 @@
       "endpoints": [
         "https://github.com/MjMoshiri/Claude-Tab/releases/latest/download/latest.json"
       ],
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVBMjQxMDQwQTVGMTU0QTAKUldTZ1ZQR2xRQkFrNnJhdHd6TEs4NUZ4aFlxYXczWGo5SjZUYy81eFkyYWc5RmRvY05DNmtmeGUK"
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEFDQ0E3N0ZCRjNEMjA0MUEKUldRYUJOTHorM2ZLckdNZ2pjOW5pMXplelF5Sk8xVld4TlN1M3VGUFYwUlpobWFEU0NCMjhoRTAK"
     }
   }
 }

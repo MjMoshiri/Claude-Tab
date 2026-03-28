@@ -14,6 +14,7 @@ const CONFIG_DEFAULTS: Record<string, unknown> = {
   "autoAccept.model": "haiku",
   "autoAccept.mode": "permission",
   "telegram.botToken": "",
+  "update.autoCheck": true,
 };
 
 interface ConfigContextValue {

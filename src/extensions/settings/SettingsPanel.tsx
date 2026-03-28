@@ -541,6 +541,9 @@ export function SettingsPanel() {
   // Session idle timeout (minutes before session transitions to Idle state)
   const idleTimeoutMinutes = config.get<number>("session.idleTimeoutMinutes", 30);
 
+  // Update settings
+  const autoCheckEnabled = config.get<boolean>("update.autoCheck", true);
+
   // Auto-accept settings
   const autoAcceptEnabled = config.get<boolean>("autoAccept.enabled", false);
   const autoAcceptPolicy = config.get<string>("autoAccept.defaultPolicy", "");
@@ -771,6 +774,20 @@ export function SettingsPanel() {
 
           {/* Updates Section */}
           <div className="settings-panel-section">Updates</div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Auto-check for updates</span>
+              <span className="settings-item-desc">
+                Check every 5 minutes and download in the background
+              </span>
+            </div>
+            <Toggle
+              checked={autoCheckEnabled}
+              onChange={(checked) => config.set("update.autoCheck", checked)}
+            />
+          </div>
+
           <UpdateChecker />
 
           {/* Skill Groups Section */}
