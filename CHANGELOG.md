@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.4.2] - 2026-03-28
+
+### Fixed
+- **Telegram bot URL capture failing**: ANSI stripping was per-chunk, so OSC 8 hyperlink sequences split across PTY fragments would corrupt the buffer. Now accumulates raw output and strips on the full buffer. Also handles ST (`\x1b\\`) terminators for OSC 8.
+- **Telegram settings not showing after restart**: Bot token wasn't in `CONFIG_DEFAULTS`, so the UI loaded it as empty on startup even though it was persisted to disk.
+- **macOS file access re-prompted after update**: Added `Info.plist` privacy descriptions and `Entitlements.plist` so macOS TCC permissions persist across app updates.
+
+### Added
+- **Clickable terminal links**: URLs in terminal output are now clickable via xterm.js WebLinks addon.
+
 ## [1.4.0] - 2026-03-28
 
 ### Added

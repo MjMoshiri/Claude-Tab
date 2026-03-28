@@ -829,13 +829,20 @@ fn spawn_rc_capture(
 
         debug!(session_id = %session_id, "Wrote /remote-control to PTY");
 
-        // Regex to strip ANSI escape codes from terminal output
-        let ansi_strip = Regex::new(r"\x1b\[[0-9;]*[a-zA-Z]|\x1b\].*?\x07|\x1b\[.*?[@-~]").expect("valid regex");
-        // Match any https://claude.ai URL (flexible to handle future URL format changes)
-        let url_pattern = Regex::new(r"https://claude\.ai/[A-Za-z0-9/_\-]+").expect("valid regex");
+        // Strip ANSI/OSC sequences from the full accumulated buffer each time,
+        // so sequences split across PTY chunks are handled correctly.
+        let ansi_strip = Regex::new(
+            r"(?x)
+            \x1b\[[0-9;]*[a-zA-Z]       |  # CSI sequences (colors, cursor)
+            \x1b\][^\x07\x1b]*(?:\x07|\x1b\\)  |  # OSC sequences (hyperlinks, title) terminated by BEL or ST
+            \x1b\[[0-9;]*[@-~]           |  # CSI with final byte
+            \x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)  # OSC 8 hyperlink sequences
+            "
+        ).expect("valid regex");
+        let url_pattern = Regex::new(r"https://claude\.ai/[A-Za-z0-9/_\-\.]+").expect("valid regex");
 
         let url_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
-        let mut accumulated = String::new();
+        let mut raw_accumulated = String::new();
         let mut enter_count = 0;
         let mut last_enter_time = tokio::time::Instant::now();
 
@@ -851,14 +858,12 @@ fn spawn_rc_capture(
                         break; // PTY closed
                     }
 
-                    // Strip ANSI codes and accumulate clean text
+                    // Accumulate raw text, strip ANSI on full buffer below
                     if let Ok(raw_text) = std::str::from_utf8(&chunk.data) {
-                        let clean = ansi_strip.replace_all(raw_text, "");
-                        accumulated.push_str(&clean);
+                        raw_accumulated.push_str(raw_text);
                     }
 
                     // Send Enter periodically to dismiss follow-up prompts
-                    // (e.g. "Do you want to activate?", confirmation dialogs)
                     let now = tokio::time::Instant::now();
                     if enter_count < 5 && now.duration_since(last_enter_time) > std::time::Duration::from_secs(2) {
                         let _ = deps.pty_manager.write_data(&session_id, b"\r");
@@ -867,8 +872,9 @@ fn spawn_rc_capture(
                         debug!(session_id = %session_id, count = enter_count, "Sent Enter to dismiss prompt");
                     }
 
-                    // Check for URL in clean output
-                    if let Some(mat) = url_pattern.find(&accumulated) {
+                    // Strip ANSI from full buffer, then search for URL
+                    let clean = ansi_strip.replace_all(&raw_accumulated, "");
+                    if let Some(mat) = url_pattern.find(&clean) {
                         let url = mat.as_str().to_string();
                         info!(session_id = %session_id, url = %url, "Captured /rc URL");
 

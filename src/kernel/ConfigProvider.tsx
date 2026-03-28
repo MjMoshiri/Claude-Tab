@@ -13,6 +13,7 @@ const CONFIG_DEFAULTS: Record<string, unknown> = {
   "autoAccept.defaultPolicy": "",
   "autoAccept.model": "haiku",
   "autoAccept.mode": "permission",
+  "telegram.botToken": "",
 };
 
 interface ConfigContextValue {
