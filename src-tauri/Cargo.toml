@@ -12,6 +12,7 @@ claude-tabs-ext-claude-hooks = { path = "../crates/extensions/claude-hooks" }
 claude-tabs-ext-output-parser = { path = "../crates/extensions/output-parser" }
 claude-tabs-ext-auto-switch = { path = "../crates/extensions/auto-switch" }
 claude-tabs-ext-directory-tracker = { path = "../crates/extensions/directory-tracker" }
+claude-tabs-ext-telegram-bot = { path = "../crates/extensions/telegram-bot" }
 tauri = { workspace = true, features = ["tray-icon", "devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"

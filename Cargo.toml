@@ -11,6 +11,7 @@ members = [
     "crates/extensions/system-notify",
     "crates/extensions/file-watcher",
     "crates/extensions/directory-tracker",
+    "crates/extensions/telegram-bot",
     "src-tauri",
 ]
 resolver = "2"

@@ -1,3 +1,4 @@
+use tauri::Manager;
 use claude_tabs_core::config::Config;
 use claude_tabs_core::event_bus::EventBus;
 use claude_tabs_core::hook_listener::HookListener;
@@ -5,13 +6,55 @@ use claude_tabs_core::profile::{ProfileStore, PackStore};
 use claude_tabs_core::session::SessionStore;
 use claude_tabs_core::skills::SkillManager;
 use claude_tabs_core::state_machine::{SessionState, StateMachine};
+use claude_tabs_ext_telegram_bot::PairingState;
 use claude_tabs_pty::{OutputStream, PtyManager};
 use claude_tabs_storage::{SessionScanner, SqliteBackend};
 use claude_tabs_tauri_bridge::commands;
 use claude_tabs_tauri_bridge::ipc::{AppState, IpcBridge};
 use std::sync::Arc;
+use tokio::sync::RwLock;
 use tracing::{debug, info, warn};
 use tracing_subscriber::EnvFilter;
+
+// --- Telegram bot Tauri commands ---
+
+struct TelegramState {
+    pairing: Arc<RwLock<PairingState>>,
+    pending_code: Arc<RwLock<Option<claude_tabs_ext_telegram_bot::PendingCode>>>,
+}
+
+#[tauri::command]
+async fn telegram_generate_code(
+    state: tauri::State<'_, TelegramState>,
+) -> Result<String, String> {
+    let code = claude_tabs_ext_telegram_bot::generate_pairing_code(state.pending_code.clone()).await;
+    Ok(code)
+}
+
+#[tauri::command]
+async fn telegram_get_status(
+    state: tauri::State<'_, TelegramState>,
+) -> Result<PairingState, String> {
+    let pairing = state.pairing.read().await;
+    Ok(pairing.clone())
+}
+
+#[tauri::command]
+fn open_url(url: String) -> Result<(), String> {
+    std::process::Command::new("open")
+        .arg(&url)
+        .spawn()
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn telegram_disconnect(
+    state: tauri::State<'_, TelegramState>,
+) -> Result<(), String> {
+    claude_tabs_ext_telegram_bot::disconnect(state.pairing.clone()).await;
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -67,7 +110,7 @@ pub fn run() {
         profile_store: profile_store.clone(),
         pack_store: pack_store.clone(),
         state_machine: state_machine.clone(),
-        skill_manager,
+        skill_manager: skill_manager.clone(),
     };
 
     tauri::Builder::default()
@@ -75,6 +118,10 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(app_state)
+        .manage(TelegramState {
+            pairing: Arc::new(tokio::sync::RwLock::new(claude_tabs_ext_telegram_bot::get_pairing_status())),
+            pending_code: Arc::new(tokio::sync::RwLock::new(None)),
+        })
         .invoke_handler(tauri::generate_handler![
             commands::create_session,
             commands::close_session,
@@ -135,6 +182,11 @@ pub fn run() {
             // Session policy
             commands::get_session_policy,
             commands::set_session_policy,
+            // Telegram bot
+            open_url,
+            telegram_generate_code,
+            telegram_get_status,
+            telegram_disconnect,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();
@@ -150,6 +202,26 @@ pub fn run() {
                 pks.init().await;
                 info!("Profiles and packs loaded");
             });
+
+            // Start Telegram bot via tauri::async_runtime::spawn
+            // (raw tokio::spawn panics here since setup runs on the main thread)
+            {
+                let tg_state: tauri::State<'_, TelegramState> = app.state();
+                let bot_future = claude_tabs_ext_telegram_bot::create_bot_future(
+                    config.clone(),
+                    profile_store.clone(),
+                    pack_store.clone(),
+                    session_store.clone(),
+                    pty_manager.clone(),
+                    output_stream.clone(),
+                    event_bus.clone(),
+                    skill_manager.clone(),
+                    tg_state.pairing.clone(),
+                    tg_state.pending_code.clone(),
+                );
+                tauri::async_runtime::spawn(bot_future);
+                info!("Telegram bot extension started");
+            }
 
             let bridge = IpcBridge::new(app_handle, os.clone(), eb.clone());
             bridge.start_forwarding();

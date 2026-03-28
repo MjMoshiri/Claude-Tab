@@ -1,0 +1,17 @@
+[package]
+name = "claude-tabs-ext-telegram-bot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+claude-tabs-core = { path = "../../core" }
+claude-tabs-pty = { path = "../../pty" }
+teloxide = { version = "0.13", features = ["macros"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tracing = { workspace = true }
+regex = { workspace = true }
+rand = "0.8"
+chrono = { workspace = true }

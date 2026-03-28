@@ -391,6 +391,139 @@ function UpdateChecker() {
   );
 }
 
+interface TelegramPairing {
+  user_id: number | null;
+  chat_id: number | null;
+  username: string | null;
+  paired_at: string | null;
+}
+
+function TelegramSettings() {
+  const config = useConfig();
+  const botToken = config.get<string>("telegram.botToken", "");
+  const [showToken, setShowToken] = useState(false);
+  const [pairing, setPairing] = useState<TelegramPairing | null>(null);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke<TelegramPairing>("telegram_get_status")
+      .then(setPairing)
+      .catch(() => {});
+  }, []);
+
+  const isPaired = pairing?.user_id != null;
+  const hasToken = botToken.length > 0;
+
+  const handleGenerateCode = async () => {
+    try {
+      const code = await invoke<string>("telegram_generate_code");
+      setPairingCode(code);
+      // Auto-clear after 5 minutes
+      setTimeout(() => setPairingCode(null), 300000);
+    } catch (err) {
+      console.error("[Telegram] Failed to generate code:", err);
+    }
+  };
+
+  const handleDisconnect = async () => {
+    try {
+      await invoke("telegram_disconnect");
+      setPairing({ user_id: null, chat_id: null, username: null, paired_at: null });
+      setPairingCode(null);
+    } catch (err) {
+      console.error("[Telegram] Failed to disconnect:", err);
+    }
+  };
+
+  return (
+    <>
+      {!hasToken ? (
+        <div className="settings-item">
+          <div className="settings-item-info">
+            <span className="settings-item-label">Bot token</span>
+            <span className="settings-item-desc">
+              Create a bot with BotFather first, then paste the token
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <input
+              className="settings-textarea"
+              style={{ width: 220, height: 28, resize: "none", fontFamily: "monospace", fontSize: 11, padding: "4px 8px" }}
+              value={botToken}
+              onChange={(e) => config.set("telegram.botToken", e.target.value)}
+              placeholder="123456:ABC-DEF..."
+            />
+            <button
+              className="settings-skill-group-add-btn"
+              style={{ fontSize: 11, padding: "4px 10px", whiteSpace: "nowrap" }}
+              onClick={() => invoke("open_url", { url: "https://t.me/botfather" })}
+            >
+              Open BotFather
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Bot token</span>
+              <span className="settings-item-desc">
+                {showToken ? botToken : botToken.replace(/./g, "\u2022")}
+              </span>
+            </div>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <button
+                className="settings-skill-group-add-btn"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                onClick={() => setShowToken(!showToken)}
+              >
+                {showToken ? "Hide" : "Show"}
+              </button>
+              <button
+                className="settings-skill-group-add-btn"
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                onClick={() => config.set("telegram.botToken", "")}
+              >
+                Remove
+              </button>
+            </div>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <span className="settings-item-label">Device pairing</span>
+              <span className="settings-item-desc">
+                {isPaired
+                  ? `Connected: ${pairing?.username ? "@" + pairing.username : "User " + pairing?.user_id}`
+                  : pairingCode
+                    ? `Send this code to your bot: ${pairingCode}`
+                    : "Not connected"}
+              </span>
+            </div>
+            {isPaired ? (
+              <button
+                className="settings-skill-group-add-btn"
+                style={{ fontSize: 11, padding: "4px 10px" }}
+                onClick={handleDisconnect}
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button
+                className="settings-skill-group-add-btn"
+                style={{ fontSize: 11, padding: "4px 10px" }}
+                onClick={handleGenerateCode}
+              >
+                {pairingCode ? "New Code" : "Connect Device"}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
 export function SettingsPanel() {
   const [visible, setVisible] = useState(false);
   const [bindings, setBindings] = useState<KeybindingDefinition[]>([]);
@@ -631,6 +764,10 @@ export function SettingsPanel() {
               <option value="all">All tool calls</option>
             </select>
           </div>
+
+          {/* Telegram Bot Section */}
+          <div className="settings-panel-section">Telegram Bot</div>
+          <TelegramSettings />
 
           {/* Updates Section */}
           <div className="settings-panel-section">Updates</div>
