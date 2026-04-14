@@ -8,5 +8,7 @@
 	<string>CT needs access to your Documents folder to manage terminal sessions.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>CT needs access to your Downloads folder to manage terminal sessions.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>CT needs microphone access for Claude Code voice mode (/voice).</string>
 </dict>
 </plist>

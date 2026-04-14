@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.4.4] - 2026-04-13
+
+### Added
+- **Flicker-free rendering**: Sets `CLAUDE_CODE_NO_FLICKER=1` for all Claude Code sessions, enabling alternate-screen-buffer rendering with mouse support and stable memory usage.
+- **Voice mode support**: Added `NSMicrophoneUsageDescription` to Info.plist so Claude Code's `/voice` command can access the microphone.
+
 ## [1.4.2] - 2026-03-28
 
 ### Fixed
