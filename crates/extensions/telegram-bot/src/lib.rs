@@ -16,7 +16,7 @@ use teloxide::dispatching::dialogue::{InMemStorage, GetChatId};
 use teloxide::prelude::*;
 use teloxide::types::{InlineKeyboardButton, InlineKeyboardMarkup};
 use tokio::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 // --- Pairing ---
 
@@ -738,6 +738,10 @@ async fn launch_and_capture(
         }
     };
 
+    // Subscribe BEFORE start_reading so we don't miss the startup banner
+    // where Claude Code prints the /remote-control URL.
+    let output_receiver = deps.output_stream.subscribe();
+
     deps.output_stream.start_reading(session_id.clone(), reader);
     deps.session_store.add(session.clone()).await;
     deps.session_store
@@ -781,97 +785,44 @@ async fn launch_and_capture(
 
     info!(session_id = %session_id, profile = %profile.name, "Telegram-launched session created");
 
-    // Now wait for SessionStart hook, then write /rc and capture URL
-    spawn_rc_capture(bot, chat_id, session_id, profile.name.clone(), deps.clone());
+    // Claude Code enables remote control by default and prints the URL in its
+    // startup banner, so we just watch the PTY output for it — no /rc command
+    // write, no prompt dismissal needed.
+    spawn_url_capture(
+        bot,
+        chat_id,
+        session_id,
+        profile.name.clone(),
+        output_receiver,
+    );
 
     Ok(())
 }
 
-/// Spawn a background task that waits for the session to start,
-/// writes /remote-control, and captures the URL.
-fn spawn_rc_capture(
+/// Watch PTY output for the remote-control URL printed in Claude Code's startup banner.
+fn spawn_url_capture(
     bot: Bot,
     chat_id: ChatId,
     session_id: String,
     profile_name: String,
-    deps: BotDeps,
+    mut output_receiver: tokio::sync::broadcast::Receiver<claude_tabs_pty::OutputChunk>,
 ) {
     tokio::spawn(async move {
-        // Wait for the hook.SessionStart event for this session
-        let mut receiver = deps.event_bus.receiver();
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
-
-        let mut session_started = false;
-
-        loop {
-            let timeout = tokio::time::timeout_at(deadline, receiver.recv()).await;
-
-            match timeout {
-                Ok(Ok(event)) => {
-                    if event.topic == "hook.SessionStart" {
-                        let ev_session_id = event
-                            .payload
-                            .get("session_id")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("");
-                        if ev_session_id == session_id {
-                            session_started = true;
-                            break;
-                        }
-                    }
-                }
-                Ok(Err(tokio::sync::broadcast::error::RecvError::Lagged(_))) => continue,
-                Ok(Err(_)) => break,
-                Err(_) => break, // Timeout
-            }
-        }
-
-        if !session_started {
-            let _ = bot
-                .send_message(chat_id, "Session timed out waiting to start.")
-                .await;
-            return;
-        }
-
-        // Small delay for Claude Code to fully initialize
-        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
-
-        // Subscribe to PTY output BEFORE writing /rc so we don't miss anything
-        let mut output_receiver = deps.output_stream.subscribe();
-
-        // Write /remote-control to the PTY
-        if let Err(e) = deps
-            .pty_manager
-            .write_data(&session_id, b"/remote-control\r")
-        {
-            error!("Failed to write /rc to PTY: {}", e);
-            let _ = bot
-                .send_message(chat_id, "Failed to activate remote control.")
-                .await;
-            return;
-        }
-
-        debug!(session_id = %session_id, "Wrote /remote-control to PTY");
-
-        // Strip ANSI/OSC sequences from the full accumulated buffer each time,
-        // so sequences split across PTY chunks are handled correctly.
+        // Strip ANSI/OSC sequences so sequences split across PTY chunks are handled.
         let ansi_strip = Regex::new(
             r"(?x)
-            \x1b\[[0-9;]*[a-zA-Z]       |  # CSI sequences (colors, cursor)
-            \x1b\][^\x07\x1b]*(?:\x07|\x1b\\)  |  # OSC sequences (hyperlinks, title) terminated by BEL or ST
-            \x1b\[[0-9;]*[@-~]           |  # CSI with final byte
-            \x1b\]8;[^\x07\x1b]*(?:\x07|\x1b\\)  # OSC 8 hyperlink sequences
+            \x1b\[[0-9;]*[a-zA-Z]                  |  # CSI sequences
+            \x1b\][^\x07\x1b]*(?:\x07|\x1b\\)      |  # OSC sequences (BEL or ST terminated)
+            \x1b\[[0-9;]*[@-~]                        # CSI with final byte
             "
         ).expect("valid regex");
         let url_pattern = Regex::new(r"https://claude\.ai/[A-Za-z0-9/_\-\.]+").expect("valid regex");
 
-        let url_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(30);
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(60);
         let mut raw_accumulated = String::new();
-        let mut enter_count = 0;
-        let mut last_enter_time = tokio::time::Instant::now();
 
         loop {
-            let timeout = tokio::time::timeout_at(url_deadline, output_receiver.recv()).await;
+            let timeout = tokio::time::timeout_at(deadline, output_receiver.recv()).await;
 
             match timeout {
                 Ok(Ok(chunk)) => {
@@ -882,25 +833,14 @@ fn spawn_rc_capture(
                         break; // PTY closed
                     }
 
-                    // Accumulate raw text, strip ANSI on full buffer below
                     if let Ok(raw_text) = std::str::from_utf8(&chunk.data) {
                         raw_accumulated.push_str(raw_text);
                     }
 
-                    // Send Enter periodically to dismiss follow-up prompts
-                    let now = tokio::time::Instant::now();
-                    if enter_count < 5 && now.duration_since(last_enter_time) > std::time::Duration::from_secs(2) {
-                        let _ = deps.pty_manager.write_data(&session_id, b"\r");
-                        enter_count += 1;
-                        last_enter_time = now;
-                        debug!(session_id = %session_id, count = enter_count, "Sent Enter to dismiss prompt");
-                    }
-
-                    // Strip ANSI from full buffer, then search for URL
                     let clean = ansi_strip.replace_all(&raw_accumulated, "");
                     if let Some(mat) = url_pattern.find(&clean) {
                         let url = mat.as_str().to_string();
-                        info!(session_id = %session_id, url = %url, "Captured /rc URL");
+                        info!(session_id = %session_id, url = %url, "Captured remote-control URL");
 
                         let keyboard = InlineKeyboardMarkup::new(vec![vec![
                             InlineKeyboardButton::url(
@@ -912,10 +852,7 @@ fn spawn_rc_capture(
                         let _ = bot
                             .send_message(
                                 chat_id,
-                                &format!(
-                                    "\u{2705} Session \"{}\" is ready!",
-                                    profile_name
-                                ),
+                                &format!("\u{2705} Session \"{}\" is ready!", profile_name),
                             )
                             .reply_markup(keyboard)
                             .await;
@@ -929,7 +866,10 @@ fn spawn_rc_capture(
         }
 
         let _ = bot
-            .send_message(chat_id, "Failed to capture remote control URL. The session is running but /rc may not have activated.")
+            .send_message(
+                chat_id,
+                "Failed to capture remote control URL. The session is running but the startup banner didn't include a URL.",
+            )
             .await;
     });
 }
