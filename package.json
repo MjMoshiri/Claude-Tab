@@ -2,6 +2,8 @@
   "name": "claude-tabs",
   "private": true,
   "version": "1.4.3",
+  "author": "MohammadJavad Moshiri",
+  "license": "AGPL-3.0-or-later",
   "type": "module",
   "scripts": {
     "dev": "vite",
