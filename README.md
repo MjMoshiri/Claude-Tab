@@ -70,4 +70,7 @@ npm run build
 
 ## License
 
-MIT
+Copyright (C) 2026 MohammadJavad Moshiri
+
+This project is licensed under the GNU Affero General Public License,
+version 3 or later. See [LICENSE](LICENSE) for details.
