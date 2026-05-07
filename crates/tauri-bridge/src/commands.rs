@@ -201,6 +201,7 @@ pub async fn create_session(
     let mut env = std::collections::HashMap::new();
     env.insert("TERM".to_string(), "xterm-256color".to_string());
     env.insert("CLAUDE_TABS_SESSION_ID".to_string(), session_id.clone());
+    env.insert("CLAUDE_CODE_NO_FLICKER".to_string(), "1".to_string());
 
     // Inject shell PATH so app bundles (macOS) can find CLIs like `claude`
     if let Some(shell_path) = get_shell_path() {
