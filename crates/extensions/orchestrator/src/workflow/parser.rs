@@ -174,13 +174,13 @@ next: done
     #[test]
     fn rejects_missing_frontmatter() {
         let err = parse("# Plain markdown").unwrap_err();
-        matches!(err, ParseError::NoFrontmatter);
+        assert!(matches!(err, ParseError::NoFrontmatter));
     }
 
     #[test]
     fn rejects_no_stages() {
         let src = "---\nid: x\nname: y\n---\n";
         let err = parse(src).unwrap_err();
-        matches!(err, ParseError::NoStages);
+        assert!(matches!(err, ParseError::NoStages));
     }
 }
