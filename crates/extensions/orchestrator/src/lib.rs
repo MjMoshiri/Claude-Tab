@@ -5,6 +5,7 @@
 //! the next stage's prompt when the current stage is done.
 
 pub mod runtime;
+pub mod transcript;
 pub mod workflow;
 
 use async_trait::async_trait;
