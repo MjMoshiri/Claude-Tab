@@ -100,6 +100,17 @@ pub fn run() {
     let pack_store = Arc::new(PackStore::new());
     let skill_manager = Arc::new(SkillManager::new());
 
+    let orchestrator = match claude_tabs_ext_orchestrator::create_orchestrator_future(pty_manager.clone()) {
+        Ok((dispatcher, fut)) => {
+            tauri::async_runtime::spawn(fut);
+            Some(dispatcher)
+        }
+        Err(e) => {
+            tracing::warn!("orchestrator failed to start: {e}");
+            None
+        }
+    };
+
     let app_state = AppState {
         event_bus: event_bus.clone(),
         config: config.clone(),
@@ -111,6 +122,7 @@ pub fn run() {
         pack_store: pack_store.clone(),
         state_machine: state_machine.clone(),
         skill_manager: skill_manager.clone(),
+        orchestrator,
     };
 
     tauri::Builder::default()
@@ -187,6 +199,11 @@ pub fn run() {
             telegram_generate_code,
             telegram_get_status,
             telegram_disconnect,
+            // Workflow orchestrator
+            commands::list_workflows,
+            commands::attach_workflow,
+            commands::get_run_state,
+            commands::control_run,
         ])
         .setup(move |app| {
             let app_handle = app.handle().clone();

@@ -1158,4 +1158,164 @@ pub fn delete_system_prompt(name: String) -> Result<(), CommandError> {
         .map_err(CommandError::Internal)
 }
 
+// ---------- workflow orchestrator commands ----------
+
+#[tauri::command]
+pub async fn list_workflows(
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, CommandError> {
+    let Some(dispatcher) = state.orchestrator.as_ref() else {
+        return Ok(vec![]);
+    };
+    Ok(dispatcher
+        .registry
+        .list()
+        .into_iter()
+        .map(|w| serde_json::to_value(&w).unwrap_or(serde_json::Value::Null))
+        .collect())
+}
+
+#[tauri::command]
+pub async fn attach_workflow(
+    state: State<'_, AppState>,
+    session_id: String,
+    workflow_id: String,
+    inputs: serde_json::Value,
+) -> Result<serde_json::Value, CommandError> {
+    use claude_tabs_ext_orchestrator::runtime::run::{RunStatus, WorkflowRun};
+    use std::collections::BTreeMap;
+
+    let dispatcher = state
+        .orchestrator
+        .as_ref()
+        .ok_or_else(|| CommandError::Internal("orchestrator not running".into()))?;
+
+    let workflow = dispatcher
+        .registry
+        .get(&workflow_id)
+        .ok_or_else(|| CommandError::Internal(format!("unknown workflow {workflow_id}")))?;
+
+    let stage_one = workflow
+        .stage_order
+        .first()
+        .ok_or_else(|| CommandError::Internal("workflow has no stages".into()))?
+        .clone();
+
+    let inputs_map: BTreeMap<String, serde_json::Value> = serde_json::from_value(inputs)
+        .map_err(|e| CommandError::Internal(format!("bad inputs: {e}")))?;
+
+    let run = WorkflowRun {
+        run_id: uuid::Uuid::new_v4().to_string(),
+        session_id: session_id.clone(),
+        workflow_id: workflow_id.clone(),
+        inputs: inputs_map.clone(),
+        current_stage_id: stage_one.clone(),
+        status: RunStatus::Running,
+        started_at: chrono::Utc::now().timestamp_millis(),
+        ended_at: None,
+    };
+
+    dispatcher
+        .store
+        .create_run(&run)
+        .map_err(|e| CommandError::Internal(e.to_string()))?;
+    let _ = dispatcher
+        .store
+        .record_history(&run.run_id, &stage_one, "entered", None);
+
+    let stage = workflow.stages.get(&stage_one).expect("validated");
+    let rendered = claude_tabs_ext_orchestrator::runtime::render::render(stage, &inputs_map, None)
+        .map_err(|e| CommandError::Internal(e.to_string()))?;
+    dispatcher
+        .injector
+        .write_user_prompt(&session_id, &rendered)
+        .map_err(|e| CommandError::Internal(e.to_string()))?;
+
+    Ok(serde_json::json!({
+        "run_id": run.run_id,
+        "current_stage_id": stage_one,
+    }))
+}
+
+#[tauri::command]
+pub async fn get_run_state(
+    state: State<'_, AppState>,
+    session_id: String,
+) -> Result<Option<serde_json::Value>, CommandError> {
+    let Some(dispatcher) = state.orchestrator.as_ref() else {
+        return Ok(None);
+    };
+    let run = dispatcher
+        .store
+        .load_by_session(&session_id)
+        .map_err(|e| CommandError::Internal(e.to_string()))?;
+    Ok(run.map(|r| serde_json::json!({ "run": r })))
+}
+
+#[tauri::command]
+pub async fn control_run(
+    state: State<'_, AppState>,
+    session_id: String,
+    action: String,
+) -> Result<(), CommandError> {
+    use claude_tabs_ext_orchestrator::runtime::run::{advance, AdvanceOutcome, RunStatus, Verdict};
+
+    let dispatcher = state
+        .orchestrator
+        .as_ref()
+        .ok_or_else(|| CommandError::Internal("orchestrator not running".into()))?;
+
+    let run = dispatcher
+        .store
+        .load_by_session(&session_id)
+        .map_err(|e| CommandError::Internal(e.to_string()))?
+        .ok_or_else(|| CommandError::Internal("no run for session".into()))?;
+
+    match action.as_str() {
+        "pause" => dispatcher
+            .store
+            .set_status(&run.run_id, RunStatus::Paused)
+            .map_err(|e| CommandError::Internal(e.to_string()))?,
+        "resume" => dispatcher
+            .store
+            .set_status(&run.run_id, RunStatus::Running)
+            .map_err(|e| CommandError::Internal(e.to_string()))?,
+        "cancel" => dispatcher
+            .store
+            .set_status(&run.run_id, RunStatus::Paused)
+            .map_err(|e| CommandError::Internal(e.to_string()))?,
+        "skip" => {
+            let workflow = dispatcher
+                .registry
+                .get(&run.workflow_id)
+                .ok_or_else(|| CommandError::Internal("missing workflow".into()))?;
+            match advance(&run, &workflow, Verdict::Complete) {
+                AdvanceOutcome::Inject { stage_id } => {
+                    dispatcher
+                        .store
+                        .advance_run(&run.run_id, &stage_id)
+                        .map_err(|e| CommandError::Internal(e.to_string()))?;
+                    let next = workflow.stages.get(&stage_id).expect("validated");
+                    let rendered = claude_tabs_ext_orchestrator::runtime::render::render(
+                        next,
+                        &run.inputs,
+                        None,
+                    )
+                    .map_err(|e| CommandError::Internal(e.to_string()))?;
+                    dispatcher
+                        .injector
+                        .write_user_prompt(&session_id, &rendered)
+                        .map_err(|e| CommandError::Internal(e.to_string()))?;
+                }
+                AdvanceOutcome::Done => dispatcher
+                    .store
+                    .set_status(&run.run_id, RunStatus::Done)
+                    .map_err(|e| CommandError::Internal(e.to_string()))?,
+                _ => {}
+            }
+        }
+        other => return Err(CommandError::Internal(format!("unknown action {other}"))),
+    }
+    Ok(())
+}
 

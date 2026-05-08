@@ -22,6 +22,7 @@ pub struct AppState {
     pub pack_store: Arc<PackStore>,
     pub state_machine: Arc<StateMachine>,
     pub skill_manager: Arc<SkillManager>,
+    pub orchestrator: Option<std::sync::Arc<claude_tabs_ext_orchestrator::Dispatcher>>,
 }
 
 pub struct IpcBridge {

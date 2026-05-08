@@ -68,7 +68,10 @@ pub use transport::auth::{default_config_dir, LocalAuth};
 /// resolves to an `io::Error` and the caller should log it.
 pub fn create_orchestrator_future(
     pty_manager: Arc<claude_tabs_pty::PtyManager>,
-) -> std::io::Result<impl std::future::Future<Output = ()> + Send + 'static> {
+) -> std::io::Result<(
+    Arc<Dispatcher>,
+    impl std::future::Future<Output = ()> + Send + 'static,
+)> {
     use crate::guardrails::AdvanceCounter;
     use crate::injector::Injector;
     use crate::judge::claude_cli::ClaudeCli;
@@ -101,10 +104,13 @@ pub fn create_orchestrator_future(
         counter: Arc::new(AdvanceCounter::new()),
     });
 
+    let dispatcher_for_serve = dispatcher.clone();
     let auth_for_serve = auth.clone();
-    Ok(async move {
-        if let Err(e) = transport::server::serve(dispatcher, auth_for_serve).await {
+    let fut = async move {
+        if let Err(e) = transport::server::serve(dispatcher_for_serve, auth_for_serve).await {
             tracing::error!("orchestrator http server crashed: {e}");
         }
-    })
+    };
+
+    Ok((dispatcher, fut))
 }

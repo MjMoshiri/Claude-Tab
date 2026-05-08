@@ -10,6 +10,7 @@ claude-tabs-core = { path = "../core" }
 claude-tabs-pty = { path = "../pty" }
 claude-tabs-storage = { path = "../storage" }
 claude-tabs-platform-focus = { path = "../platform-focus" }
+claude-tabs-ext-orchestrator = { path = "../extensions/orchestrator" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
