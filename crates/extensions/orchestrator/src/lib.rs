@@ -4,6 +4,8 @@
 //! by judging stage completion via the `claude -p` CLI and PTY-typing
 //! the next stage's prompt when the current stage is done.
 
+pub mod workflow;
+
 use async_trait::async_trait;
 use claude_tabs_core::traits::extension::{
     ActivationContext, Extension, ExtensionError, ExtensionManifest,
