@@ -100,12 +100,27 @@ fn extract_text(v: &serde_json::Value) -> String {
 }
 
 fn truncate(s: String, max: usize) -> String {
-    if s.len() <= max { s } else {
-        let mut t = s;
-        t.truncate(max);
-        t.push_str("...");
-        t
+    if s.len() <= max {
+        return s;
     }
+    let cutoff = floor_char_boundary(&s, max);
+    let mut t = s;
+    t.truncate(cutoff);
+    t.push_str("...");
+    t
+}
+
+/// Returns the largest valid char boundary <= `idx`. Mirrors the unstable
+/// `str::floor_char_boundary` so we don't panic when slicing UTF-8.
+fn floor_char_boundary(s: &str, idx: usize) -> usize {
+    if idx >= s.len() {
+        return s.len();
+    }
+    let mut i = idx;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    i
 }
 
 #[cfg(test)]
@@ -153,5 +168,26 @@ mod tests {
         ]);
         let tail = Tail::read(f.path(), 10).unwrap();
         assert_eq!(tail.entries.len(), 1);
+    }
+
+    #[test]
+    fn truncate_does_not_panic_on_multibyte_boundary() {
+        // 4-byte emoji (🦀 = U+1F980) — naïve byte-truncate at 1 panics.
+        let s = "🦀🦀🦀🦀🦀".to_string(); // 20 bytes, 5 chars
+        let out = truncate(s, 7); // mid-emoji byte boundary
+        assert!(out.ends_with("..."));
+        // We expect either 1 or 2 emoji + "..." (depends on floor boundary).
+        assert!(out.contains("🦀"));
+    }
+
+    #[test]
+    fn last_assistant_text_returns_latest() {
+        let f = write_jsonl(&[
+            r#"{"type":"assistant","content":"first"}"#,
+            r#"{"type":"user","content":"intermediate"}"#,
+            r#"{"type":"assistant","content":"latest"}"#,
+        ]);
+        let tail = Tail::read(f.path(), 10).unwrap();
+        assert_eq!(tail.last_assistant_text().as_deref(), Some("latest"));
     }
 }
