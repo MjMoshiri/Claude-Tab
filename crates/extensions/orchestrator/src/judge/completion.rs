@@ -27,7 +27,7 @@ pub async fn judge_completion(
     };
 
     let last_msg = tail.last_assistant_text().unwrap_or_default();
-    let mut transcript_repr = tail.compact_repr(MAX_JUDGE_PROMPT_BYTES / 2);
+    let transcript_repr = tail.compact_repr(MAX_JUDGE_PROMPT_BYTES / 2);
 
     let prompt = format!(
         "You are a workflow stage completion judge.\n\n\
@@ -40,11 +40,6 @@ pub async fn judge_completion(
          <answer>{{\"complete\": true|false, \"reason\": \"<≤30 words>\"}}</answer>",
         stage.goal, criteria, transcript_repr, last_msg
     );
-
-    if prompt.len() > MAX_JUDGE_PROMPT_BYTES {
-        let cut = MAX_JUDGE_PROMPT_BYTES - 200;
-        transcript_repr.truncate(cut.min(transcript_repr.len()));
-    }
 
     let raw = runner.run(&prompt, model).await?;
     let re = Regex::new(r"<answer>(.+?)</answer>").unwrap();
@@ -66,10 +61,13 @@ pub async fn judge_completion(
 
 fn truncate(s: &str, max: usize) -> String {
     if s.len() <= max {
-        s.to_string()
-    } else {
-        format!("{}...", &s[..max])
+        return s.to_string();
     }
+    let mut i = max;
+    while !s.is_char_boundary(i) {
+        i -= 1;
+    }
+    format!("{}...", &s[..i])
 }
 
 #[cfg(test)]
@@ -149,5 +147,13 @@ mod tests {
             .await
             .unwrap_err();
         assert!(matches!(err, JudgeError::Malformed(_)));
+    }
+
+    #[test]
+    fn truncate_does_not_panic_on_multibyte_boundary() {
+        let s = "🦀🦀🦀🦀🦀";
+        let out = truncate(s, 7);
+        assert!(out.ends_with("..."));
+        assert!(out.contains("🦀"));
     }
 }
