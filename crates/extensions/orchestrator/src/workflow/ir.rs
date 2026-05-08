@@ -75,11 +75,30 @@ pub enum SessionEventKind {
     Resume,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum NextRef {
     StageId(String),
     Done,
+}
+
+impl serde::Serialize for NextRef {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        match self {
+            NextRef::Done => serializer.serialize_str("done"),
+            NextRef::StageId(id) => serializer.serialize_str(id),
+        }
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for NextRef {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(if s == "done" {
+            NextRef::Done
+        } else {
+            NextRef::StageId(s)
+        })
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Default, Serialize, Deserialize)]
@@ -138,5 +157,22 @@ mod tests {
         let json = serde_json::to_string(&c).unwrap();
         assert!(json.contains("\"type\":\"session_event\""));
         assert!(json.contains("\"on\":\"compact\""));
+    }
+
+    #[test]
+    fn next_ref_done_serializes_as_done_string() {
+        let json = serde_json::to_string(&NextRef::Done).unwrap();
+        assert_eq!(json, "\"done\"");
+        let back: NextRef = serde_json::from_str("\"done\"").unwrap();
+        assert_eq!(back, NextRef::Done);
+    }
+
+    #[test]
+    fn next_ref_stage_id_serializes_as_string() {
+        let v = NextRef::StageId("review".to_string());
+        let json = serde_json::to_string(&v).unwrap();
+        assert_eq!(json, "\"review\"");
+        let back: NextRef = serde_json::from_str("\"review\"").unwrap();
+        assert_eq!(back, NextRef::StageId("review".to_string()));
     }
 }
