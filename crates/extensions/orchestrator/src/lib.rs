@@ -5,6 +5,7 @@
 //! the next stage's prompt when the current stage is done.
 
 pub mod guardrails;
+pub mod transport;
 pub mod injector;
 pub mod judge;
 pub mod runtime;

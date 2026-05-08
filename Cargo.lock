@@ -513,6 +513,7 @@ dependencies = [
  "claude-tabs-pty",
  "claude-tabs-storage",
  "hex",
+ "rand 0.8.5",
  "regex",
  "rusqlite",
  "serde",
