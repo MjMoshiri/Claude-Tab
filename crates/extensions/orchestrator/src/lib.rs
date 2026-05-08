@@ -4,6 +4,7 @@
 //! by judging stage completion via the `claude -p` CLI and PTY-typing
 //! the next stage's prompt when the current stage is done.
 
+pub mod guardrails;
 pub mod runtime;
 pub mod transcript;
 pub mod workflow;
