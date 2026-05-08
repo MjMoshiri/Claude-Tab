@@ -25,8 +25,8 @@ pub enum ParseError {
     InvalidStage(String, String),
     #[error("workflow has no stages")]
     NoStages,
-    #[error("missing required field `{0}`")]
-    MissingField(&'static str),
+    #[error("duplicate stage id `{0}`")]
+    DuplicateStage(String),
 }
 
 pub fn parse(src: &str) -> Result<Workflow, ParseError> {
@@ -38,6 +38,9 @@ pub fn parse(src: &str) -> Result<Workflow, ParseError> {
     let mut stage_order = Vec::new();
 
     for (id, stage_yaml) in split_stages(body) {
+        if stages.contains_key(&id) {
+            return Err(ParseError::DuplicateStage(id));
+        }
         let stage_body: StageBody = serde_yaml::from_str(&stage_yaml)
             .map_err(|e| ParseError::InvalidStage(id.clone(), e.to_string()))?;
         let stage = Stage {
@@ -89,7 +92,22 @@ fn split_frontmatter(src: &str) -> Result<(&str, &str), ParseError> {
     let trimmed = src.trim_start();
     let rest = trimmed.strip_prefix("---").ok_or(ParseError::NoFrontmatter)?;
     let rest = rest.trim_start_matches('\n');
-    let end = rest.find("\n---").ok_or(ParseError::NoFrontmatter)?;
+
+    // Find a line that is exactly "---" (no trailing chars before the next \n).
+    let mut search_pos = 0;
+    let end = loop {
+        let needle = rest[search_pos..]
+            .find("\n---")
+            .ok_or(ParseError::NoFrontmatter)?;
+        let abs = search_pos + needle;
+        let after_dashes = abs + 4; // index after "\n---"
+        let next_byte = rest.as_bytes().get(after_dashes);
+        if next_byte.is_none() || next_byte == Some(&b'\n') {
+            break abs;
+        }
+        search_pos = abs + 1;
+    };
+
     let frontmatter = &rest[..end];
     let body = rest[end..].trim_start_matches("\n---").trim_start_matches('\n');
     Ok((frontmatter, body))
@@ -182,5 +200,74 @@ next: done
         let src = "---\nid: x\nname: y\n---\n";
         let err = parse(src).unwrap_err();
         assert!(matches!(err, ParseError::NoStages));
+    }
+
+    #[test]
+    fn rejects_duplicate_stage_ids() {
+        let src = r#"---
+id: x
+name: y
+---
+
+## Stage: a
+prompt: hi
+completion:
+  type: criteria
+  criteria: c
+next: done
+
+## Stage: a
+prompt: hi
+completion:
+  type: criteria
+  criteria: c
+next: done
+"#;
+        let err = parse(src).unwrap_err();
+        assert!(matches!(err, ParseError::DuplicateStage(ref s) if s == "a"));
+    }
+
+    #[test]
+    fn frontmatter_does_not_split_on_dashes_in_value() {
+        let src = r#"---
+id: a
+name: b
+description: "uses --- inline"
+---
+
+## Stage: only
+prompt: x
+completion:
+  type: criteria
+  criteria: c
+next: done
+"#;
+        let wf = parse(src).unwrap();
+        assert_eq!(wf.id, "a");
+        assert!(wf.description.contains("inline"));
+    }
+
+    #[test]
+    fn stage_prompt_preserves_indentation() {
+        let src = r#"---
+id: x
+name: y
+---
+
+## Stage: only
+prompt: |
+  Line one.
+    Indented line.
+  Line three.
+completion:
+  type: criteria
+  criteria: c
+next: done
+"#;
+        let wf = parse(src).unwrap();
+        let p = &wf.stages["only"].prompt;
+        assert!(p.contains("Line one."), "got: {p:?}");
+        assert!(p.contains("  Indented line."), "indentation lost: {p:?}");
+        assert!(p.contains("Line three."), "got: {p:?}");
     }
 }
