@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { listWorkflows } from './api';
 import type { Workflow } from '../../types/workflow';
+import { useSession } from '../../sdk/useSession';
+import { AttachWorkflow } from './AttachWorkflow';
 
 export function WorkflowsPanel() {
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showAttach, setShowAttach] = useState(false);
+  const { activeId } = useSession();
 
   const reload = async () => {
     setLoading(true);
@@ -23,18 +27,32 @@ export function WorkflowsPanel() {
 
   return (
     <div style={{ padding: '4px 0' }}>
+      {showAttach && activeId && (
+        <AttachWorkflow sessionId={activeId} onClose={() => setShowAttach(false)} />
+      )}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
         <span className="settings-item-desc">
           Files in <code>~/.claude-tabs/workflows/*.md</code>. Edit with any text editor; reload to pick up changes.
         </span>
-        <button
-          className="settings-skill-group-add-btn"
-          onClick={reload}
-          disabled={loading}
-          style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap', marginLeft: 8 }}
-        >
-          {loading ? 'Loading...' : 'Reload'}
-        </button>
+        <div style={{ display: 'flex', gap: 6, flexShrink: 0, marginLeft: 8 }}>
+          <button
+            className="settings-skill-group-add-btn"
+            onClick={() => setShowAttach(true)}
+            disabled={!activeId}
+            title={activeId ? 'Attach a workflow to the active session' : 'No active session'}
+            style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
+          >
+            Attach to active session…
+          </button>
+          <button
+            className="settings-skill-group-add-btn"
+            onClick={reload}
+            disabled={loading}
+            style={{ fontSize: 11, padding: '4px 10px', whiteSpace: 'nowrap' }}
+          >
+            {loading ? 'Loading...' : 'Reload'}
+          </button>
+        </div>
       </div>
 
       {error && (
