@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.5.0 — Workflow orchestration (beta)
+
+- Add workflow orchestration: attach a Markdown-defined multi-stage workflow to a session; the supervisor advances stages automatically by judging completion via the `claude -p` CLI.
+- New companion plugin `claude-tabs-orchestrator` ships separately. Both are required for orchestration to function; without them, sessions behave normally.
+- Hidden behind `orchestrator.enabled` flag (default off). Toggle in Settings.
+- Bundled example workflow: `example-ship-feature.md`.
+
 ## [1.4.4] - 2026-04-13
 
 ### Added

@@ -56,6 +56,31 @@ async fn telegram_disconnect(
     Ok(())
 }
 
+/// Copy the bundled example workflow to `~/.claude-tabs/workflows/` if it is
+/// not already present. Called once after the orchestrator starts successfully.
+fn copy_example_workflow_if_missing() {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => return,
+    };
+    let workflows = std::path::PathBuf::from(home)
+        .join(".claude-tabs")
+        .join("workflows");
+    if std::fs::create_dir_all(&workflows).is_err() {
+        return;
+    }
+    let target = workflows.join("example-ship-feature.md");
+    if target.exists() {
+        return;
+    }
+    let bundled = include_str!("../../config/example-workflow.md");
+    if let Err(e) = std::fs::write(&target, bundled) {
+        tracing::warn!("failed to write example workflow: {e}");
+    } else {
+        tracing::info!("copied example workflow to {}", target.display());
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tracing_subscriber::fmt()
@@ -100,15 +125,25 @@ pub fn run() {
     let pack_store = Arc::new(PackStore::new());
     let skill_manager = Arc::new(SkillManager::new());
 
-    let orchestrator = match claude_tabs_ext_orchestrator::create_orchestrator_future(pty_manager.clone()) {
-        Ok((dispatcher, fut)) => {
-            tauri::async_runtime::spawn(fut);
-            Some(dispatcher)
+    let orchestrator_enabled = tauri::async_runtime::block_on(async {
+        config.get_bool("orchestrator.enabled").await.unwrap_or(false)
+    });
+
+    let orchestrator = if orchestrator_enabled {
+        match claude_tabs_ext_orchestrator::create_orchestrator_future(pty_manager.clone()) {
+            Ok((dispatcher, fut)) => {
+                tauri::async_runtime::spawn(fut);
+                copy_example_workflow_if_missing();
+                Some(dispatcher)
+            }
+            Err(e) => {
+                tracing::warn!("orchestrator failed to start: {e}");
+                None
+            }
         }
-        Err(e) => {
-            tracing::warn!("orchestrator failed to start: {e}");
-            None
-        }
+    } else {
+        tracing::info!("orchestrator disabled by config (orchestrator.enabled = false)");
+        None
     };
 
     let app_state = AppState {

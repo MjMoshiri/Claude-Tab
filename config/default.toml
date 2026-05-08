@@ -28,3 +28,6 @@ new_tab = "Cmd+T"
 close_tab = "Cmd+W"
 command_palette = "Cmd+K"
 quick_switch = "Cmd+Shift+P"
+
+[orchestrator]
+enabled = false

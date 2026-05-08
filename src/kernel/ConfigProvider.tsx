@@ -15,6 +15,7 @@ const CONFIG_DEFAULTS: Record<string, unknown> = {
   "autoAccept.mode": "permission",
   "telegram.botToken": "",
   "update.autoCheck": true,
+  "orchestrator.enabled": false,
 };
 
 interface ConfigContextValue {

@@ -68,6 +68,26 @@ npm run dev
 npm run build
 ```
 
+## Workflows (beta, v1.5.0)
+
+Define multi-stage agent workflows in Markdown and attach them to sessions for automated progression.
+
+**Quickstart:**
+
+1. Install the orchestrator plugin in Claude Code:
+   ```
+   /plugin marketplace add MjMoshiri/claude-tabs-orchestrator
+   /plugin install claude-tabs-orchestrator@claude-tabs-orchestrator
+   ```
+2. Enable the feature: Settings → "Workflow orchestration (beta)" → on (or set `orchestrator.enabled = true` in your config).
+3. Restart any open Claude Code sessions so the plugin loads.
+4. Open Settings → Workflows → click "Attach to active session…", pick `example-ship-feature`, fill the `task` input, start.
+5. The agent receives the first stage's prompt automatically; subsequent stages advance when the supervisor judges completion.
+
+Workflow files live at `~/.claude-tabs/workflows/*.md`. See the bundled example for the format.
+
+**Status:** beta. Linear stage chains supported in v1; branching and cross-session workflows planned for v2.
+
 ## License
 
 Copyright (C) 2026 MohammadJavad Moshiri
