@@ -1,0 +1,158 @@
+{
+  "planPath": "docs/superpowers/plans/2026-05-07-workflow-orchestration.md",
+  "lastUpdated": "2026-05-07T00:00:00Z",
+  "tasks": [
+    {
+      "id": 0,
+      "subject": "Task 0: Crate scaffolding & workspace registration",
+      "status": "pending",
+      "description": "**Goal:** Create empty `claude-tabs-ext-orchestrator` crate; register in workspace.\n\n**Files:** `crates/extensions/orchestrator/Cargo.toml`, `crates/extensions/orchestrator/src/lib.rs`, root `Cargo.toml`.\n\n**Verify:** `cargo build -p claude-tabs-ext-orchestrator`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/Cargo.toml\",\"crates/extensions/orchestrator/src/lib.rs\",\"Cargo.toml\"],\"verifyCommand\":\"cargo build -p claude-tabs-ext-orchestrator\",\"acceptanceCriteria\":[\"crate builds\",\"empty Extension impl present\"]}\n```"
+    },
+    {
+      "id": 1,
+      "subject": "Task 1: SQLite schema migration (workflows, runs, history)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Add `workflows`, `workflow_runs`, `stage_history` tables to existing `archive.db` migration.\n\n**Files:** `crates/storage/src/migrations.rs`.\n\n**Verify:** `cargo test -p claude-tabs-storage migrations`.\n\n```json:metadata\n{\"files\":[\"crates/storage/src/migrations.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-storage migrations\",\"acceptanceCriteria\":[\"3 new tables created\",\"idempotent\",\"existing tables untouched\"]}\n```"
+    },
+    {
+      "id": 2,
+      "subject": "Task 2: Workflow IR types (with serde)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Define `Workflow`/`Stage`/`Completion`/`InputSpec`/`Notes` Rust structs with serde round-trip.\n\n**Files:** `crates/extensions/orchestrator/src/workflow/mod.rs`, `.../workflow/ir.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator workflow::ir`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/workflow/ir.rs\",\"crates/extensions/orchestrator/src/workflow/mod.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator workflow::ir\",\"acceptanceCriteria\":[\"serde round-trip preserves IR\",\"completion variants tagged\"]}\n```"
+    },
+    {
+      "id": 3,
+      "subject": "Task 3: Markdown parser (frontmatter + ## Stage blocks)",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Parse workflow MD files into IR using YAML frontmatter and `## Stage:` blocks.\n\n**Files:** `crates/extensions/orchestrator/src/workflow/parser.rs`, Cargo.toml (add serde_yaml).\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator workflow::parser`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/workflow/parser.rs\",\"crates/extensions/orchestrator/Cargo.toml\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator workflow::parser\",\"acceptanceCriteria\":[\"parses 3-stage example\",\"preserves prompt whitespace\",\"errors on malformed frontmatter\"]}\n```"
+    },
+    {
+      "id": 4,
+      "subject": "Task 4: Workflow compiler (validation + reachability)",
+      "status": "pending",
+      "blockedBy": [3],
+      "description": "**Goal:** Validate parsed Workflow: stage refs resolve, vars declared, exactly one path to done, no duplicate ids.\n\n**Files:** `crates/extensions/orchestrator/src/workflow/compiler.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator workflow::compiler`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/workflow/compiler.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator workflow::compiler\",\"acceptanceCriteria\":[\"valid wf compiles\",\"unknown next stage rejected\",\"undeclared var rejected\",\"no terminal rejected\"]}\n```"
+    },
+    {
+      "id": 5,
+      "subject": "Task 5: Workflow loader (scan dir + hash + cache)",
+      "status": "pending",
+      "blockedBy": [4],
+      "description": "**Goal:** Scan `~/.claude-tabs/workflows/*.md`; parse + compile each; populate `WorkflowRegistry` in memory.\n\n**Files:** `crates/extensions/orchestrator/src/workflow/loader.rs`, `.../workflow/registry.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator workflow::loader`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/workflow/loader.rs\",\"crates/extensions/orchestrator/src/workflow/registry.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator workflow::loader\",\"acceptanceCriteria\":[\"loads valid workflows\",\"bad file does not poison others\",\"populates registry\"]}\n```"
+    },
+    {
+      "id": 6,
+      "subject": "Task 6: WorkflowRun + pure FSM advance",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Define `WorkflowRun` struct + pure `advance(run, workflow, verdict) -> AdvanceOutcome` fn.\n\n**Files:** `crates/extensions/orchestrator/src/runtime/mod.rs`, `.../runtime/run.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator runtime::run`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/runtime/run.rs\",\"crates/extensions/orchestrator/src/runtime/mod.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator runtime::run\",\"acceptanceCriteria\":[\"stay->noop\",\"complete+next->inject\",\"complete+done->done\",\"escalate propagates\"]}\n```"
+    },
+    {
+      "id": 7,
+      "subject": "Task 7: Run store (SQLite I/O)",
+      "status": "pending",
+      "blockedBy": [1, 6],
+      "description": "**Goal:** SQLite-backed `RunStore` with create/load/advance/set_status/record_history.\n\n**Files:** `crates/extensions/orchestrator/src/runtime/store.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator runtime::store`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/runtime/store.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator runtime::store\",\"acceptanceCriteria\":[\"create+load round-trip\",\"UNIQUE(session_id) violation typed\",\"advance updates stage\"]}\n```"
+    },
+    {
+      "id": 8,
+      "subject": "Task 8: Render + variable substitution",
+      "status": "pending",
+      "blockedBy": [2],
+      "description": "**Goal:** Render stage prompts with `{{var}}` substitution + optional dynamic notes addendum.\n\n**Files:** `crates/extensions/orchestrator/src/runtime/render.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator runtime::render`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/runtime/render.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator runtime::render\",\"acceptanceCriteria\":[\"substitutes string + integer\",\"missing input errors\",\"dynamic notes appended\",\"static notes skip addendum\"]}\n```"
+    },
+    {
+      "id": 9,
+      "subject": "Task 9: Transcript JSONL reader",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Tail JSONL transcript, expose `tool_uses()` and `last_assistant_text()`.\n\n**Files:** `crates/extensions/orchestrator/src/transcript.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator transcript`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/transcript.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator transcript\",\"acceptanceCriteria\":[\"reads tail N\",\"tool_uses filters\",\"skips malformed lines\"]}\n```"
+    },
+    {
+      "id": 10,
+      "subject": "Task 10: Guardrails (advance counter + size caps)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Per-run advance counter (max 20/hour) + size cap constants.\n\n**Files:** `crates/extensions/orchestrator/src/guardrails.rs`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator guardrails`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/guardrails.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator guardrails\",\"acceptanceCriteria\":[\"allows up to 20\",\"blocks 21st\",\"isolated per run\"]}\n```"
+    },
+    {
+      "id": 11,
+      "subject": "Task 11: Judges (claude -p wrapper + completion + notes)",
+      "status": "pending",
+      "blockedBy": [6, 9, 10],
+      "description": "**Goal:** `JudgeRunner` trait + `ClaudeCli` impl + `judge_completion` + `draft_notes`.\n\n**Files:** `crates/extensions/orchestrator/src/judge/{mod.rs,claude_cli.rs,completion.rs,notes.rs}`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator judge`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/judge/mod.rs\",\"crates/extensions/orchestrator/src/judge/claude_cli.rs\",\"crates/extensions/orchestrator/src/judge/completion.rs\",\"crates/extensions/orchestrator/src/judge/notes.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator judge\",\"acceptanceCriteria\":[\"parses complete:true/false\",\"malformed -> Err\",\"notes returns trimmed text\"]}\n```"
+    },
+    {
+      "id": 12,
+      "subject": "Task 12: PTY injector",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** `Injector::write_user_prompt(session_id, text)` writes text + carriage return to existing PTY.\n\n**Files:** `crates/extensions/orchestrator/src/injector.rs`.\n\n**Verify:** `cargo build -p claude-tabs-ext-orchestrator`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/injector.rs\"],\"verifyCommand\":\"cargo build -p claude-tabs-ext-orchestrator\",\"acceptanceCriteria\":[\"calls into existing pty crate\",\"NotFound on missing session\"]}\n```"
+    },
+    {
+      "id": 13,
+      "subject": "Task 13: Auth (port + token files)",
+      "status": "pending",
+      "blockedBy": [0],
+      "description": "**Goal:** Generate 32-byte hex token + write `~/.claude-tabs/orchestrator.{token,port}` (token mode 0600).\n\n**Files:** `crates/extensions/orchestrator/src/transport/{mod.rs,auth.rs}`.\n\n**Verify:** `cargo test -p claude-tabs-ext-orchestrator transport::auth`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/transport/auth.rs\",\"crates/extensions/orchestrator/src/transport/mod.rs\"],\"verifyCommand\":\"cargo test -p claude-tabs-ext-orchestrator transport::auth\",\"acceptanceCriteria\":[\"64-char hex token\",\"file mode 0600\",\"verify is constant-time\"]}\n```"
+    },
+    {
+      "id": 14,
+      "subject": "Task 14: HTTP server + dispatcher + handlers",
+      "status": "pending",
+      "blockedBy": [5, 7, 8, 11, 12, 13],
+      "description": "**Goal:** axum listener bound 127.0.0.1; endpoints `/turn-end`, `/session-start`, `/workflow/attach`, `/workflow/state/:sid`, `/workflow/control/:sid`. Token-checked. Wires dispatcher to judges + advance + injector.\n\n**Files:** `crates/extensions/orchestrator/src/dispatcher.rs`, `.../transport/{server.rs,handlers.rs}`, lib.rs activation.\n\n**Verify:** `cargo build -p claude-tabs-ext-orchestrator`.\n\n```json:metadata\n{\"files\":[\"crates/extensions/orchestrator/src/dispatcher.rs\",\"crates/extensions/orchestrator/src/transport/server.rs\",\"crates/extensions/orchestrator/src/transport/handlers.rs\",\"crates/extensions/orchestrator/src/lib.rs\"],\"verifyCommand\":\"cargo build -p claude-tabs-ext-orchestrator\",\"acceptanceCriteria\":[\"server binds to free port\",\"401 on bad token\",\"turn-end triggers dispatcher\",\"session-start handles compact\",\"attach renders+injects stage 1\"]}\n```"
+    },
+    {
+      "id": 15,
+      "subject": "Task 15: Plugin (claude-tabs-orchestrator)",
+      "status": "pending",
+      "description": "**Goal:** New repo `../claude-tabs-orchestrator/` with plugin.json, marketplace.json, hooks.json, on_stop.sh, on_session_start.sh.\n\n**Files (in sibling repo):** `.claude-plugin/plugin.json`, `.claude-plugin/marketplace.json`, `hooks/hooks.json`, `hooks/on_stop.sh`, `hooks/on_session_start.sh`, `README.md`.\n\n**Verify:** `bash hooks/on_stop.sh < /tmp/sample.json` exits 0.\n\n```json:metadata\n{\"files\":[\"../claude-tabs-orchestrator/.claude-plugin/plugin.json\",\"../claude-tabs-orchestrator/.claude-plugin/marketplace.json\",\"../claude-tabs-orchestrator/hooks/hooks.json\",\"../claude-tabs-orchestrator/hooks/on_stop.sh\",\"../claude-tabs-orchestrator/hooks/on_session_start.sh\"],\"verifyCommand\":\"echo '{\\\"session_id\\\":\\\"x\\\",\\\"transcript_path\\\":\\\"/tmp/x\\\"}' | bash ../claude-tabs-orchestrator/hooks/on_stop.sh; echo $?\",\"acceptanceCriteria\":[\"hooks executable\",\"smoke test exits 0\",\"installable via marketplace\"]}\n```"
+    },
+    {
+      "id": 16,
+      "subject": "Task 16: Tauri bridge commands + TS types",
+      "status": "pending",
+      "blockedBy": [14],
+      "description": "**Goal:** Tauri commands `list_workflows`, `attach_workflow`, `get_run_state`, `control_run` + matching TS types and `api.ts` wrappers.\n\n**Files:** `crates/tauri-bridge/src/commands.rs`, `src-tauri/src/main.rs`, `src/types/workflow.ts`, `src/extensions/orchestrator/api.ts`.\n\n**Verify:** `npm run build && cargo build`.\n\n```json:metadata\n{\"files\":[\"crates/tauri-bridge/src/commands.rs\",\"src-tauri/src/main.rs\",\"src/types/workflow.ts\",\"src/extensions/orchestrator/api.ts\"],\"verifyCommand\":\"npm run build && cargo build\",\"acceptanceCriteria\":[\"4 commands registered\",\"TS types match Rust\",\"api.ts typed wrappers\"]}\n```"
+    },
+    {
+      "id": 17,
+      "subject": "Task 17: Frontend - Workflow library panel",
+      "status": "pending",
+      "blockedBy": [16],
+      "description": "**Goal:** Read-only Settings tab listing workflows from `listWorkflows()`.\n\n**Files:** `src/extensions/orchestrator/{index.tsx,WorkflowsPanel.tsx}`, `src/extensions/settings/SettingsPanel.tsx`.\n\n**Verify:** `npm run dev`; open Settings -> Workflows tab; see list.\n\n```json:metadata\n{\"files\":[\"src/extensions/orchestrator/index.tsx\",\"src/extensions/orchestrator/WorkflowsPanel.tsx\",\"src/extensions/settings/SettingsPanel.tsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"renders workflows\",\"zero-state message\",\"reload button works\"]}\n```"
+    },
+    {
+      "id": 18,
+      "subject": "Task 18: Frontend - Attach modal + inputs form",
+      "status": "pending",
+      "blockedBy": [17],
+      "description": "**Goal:** Modal: pick workflow -> fill inputs form (built from schema) -> attachWorkflow. Reachable via command palette.\n\n**Files:** `src/extensions/orchestrator/{AttachWorkflow.tsx,InputsForm.tsx}`, register command in `index.tsx`.\n\n**Verify:** `npm run dev`; Cmd+K -> Attach -> fill -> submit -> prompt appears in PTY.\n\n```json:metadata\n{\"files\":[\"src/extensions/orchestrator/AttachWorkflow.tsx\",\"src/extensions/orchestrator/InputsForm.tsx\",\"src/extensions/orchestrator/index.tsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"lists workflows\",\"required validation\",\"submit calls attachWorkflow\",\"errors surface\"]}\n```"
+    },
+    {
+      "id": 19,
+      "subject": "Task 19: Frontend - Status badge + run drawer",
+      "status": "pending",
+      "blockedBy": [18],
+      "description": "**Goal:** STATUS_BAR_LEFT badge showing run state; click opens drawer with stage timeline + Pause/Resume/Skip/Cancel buttons.\n\n**Files:** `src/extensions/orchestrator/{OrchestratorBadge.tsx,RunDrawer.tsx}`, register slot in index.tsx.\n\n**Verify:** `npm run dev`; attach workflow; see badge; click; controls work.\n\n```json:metadata\n{\"files\":[\"src/extensions/orchestrator/OrchestratorBadge.tsx\",\"src/extensions/orchestrator/RunDrawer.tsx\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"badge shows when run active\",\"drawer shows timeline\",\"controls call controlRun\"]}\n```"
+    },
+    {
+      "id": 20,
+      "subject": "Task 20: Feature flag + example workflow + docs",
+      "status": "pending",
+      "blockedBy": [19, 14],
+      "description": "**Goal:** Gate orchestrator behind `orchestrator.enabled`; ship example workflow; update README + CHANGELOG.\n\n**Files:** `src/kernel/ConfigProvider.tsx`, `crates/extensions/orchestrator/src/lib.rs`, `config/example-workflow.md`, `src-tauri/src/main.rs`, `README.md`, `CHANGELOG.md`.\n\n**Verify:** Toggle setting; orchestrator activates/deactivates without crash.\n\n```json:metadata\n{\"files\":[\"src/kernel/ConfigProvider.tsx\",\"crates/extensions/orchestrator/src/lib.rs\",\"config/example-workflow.md\",\"src-tauri/src/main.rs\",\"README.md\",\"CHANGELOG.md\"],\"verifyCommand\":\"npm run dev\",\"acceptanceCriteria\":[\"disabled = no HTTP listener\",\"first run copies example\",\"README + CHANGELOG updated\"]}\n```"
+    },
+    {
+      "id": 21,
+      "subject": "Task 21: E2E smoke test + tag",
+      "status": "pending",
+      "blockedBy": [15, 20],
+      "description": "**Goal:** Walk through manual smoke checklist; tag v1.5.0-beta on green.\n\n**Files:** `docs/superpowers/specs/2026-05-07-workflow-orchestration-smoke-checklist.md`.\n\n**Verify:** All checklist items checked; tag created.\n\n```json:metadata\n{\"files\":[\"docs/superpowers/specs/2026-05-07-workflow-orchestration-smoke-checklist.md\"],\"verifyCommand\":\"git tag v1.5.0-beta\",\"acceptanceCriteria\":[\"port+token files appear on launch\",\"plugin signals received\",\"full chain reaches done\",\"controls work\",\"Tab-closed = silent no-op\"]}\n```"
+    }
+  ]
+}
