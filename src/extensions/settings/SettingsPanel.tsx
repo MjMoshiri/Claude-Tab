@@ -3,6 +3,7 @@ import type { IKeybindingManager, KeybindingDefinition } from "../../types/kerne
 import { useConfig } from "../../kernel/ConfigProvider";
 import { invoke } from "@tauri-apps/api/core";
 import { SkillInfo } from "../../types/profile";
+import { WorkflowsPanel } from "../orchestrator/WorkflowsPanel";
 
 let settingsBindings: KeybindingDefinition[] = [];
 let showSettings = false;
@@ -794,6 +795,12 @@ export function SettingsPanel() {
           <div className="settings-panel-section">Skill Groups</div>
           <div className="settings-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
             <SkillGroupsEditor />
+          </div>
+
+          {/* Workflows Section */}
+          <div className="settings-panel-section">Workflows</div>
+          <div className="settings-item" style={{ flexDirection: "column", alignItems: "stretch" }}>
+            <WorkflowsPanel />
           </div>
 
           {/* Keyboard Shortcuts Section */}
