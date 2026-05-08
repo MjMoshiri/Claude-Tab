@@ -18,7 +18,7 @@ pub enum StoreError {
 }
 
 pub struct RunStore {
-    conn: Mutex<Connection>,
+    pub(crate) conn: Mutex<Connection>,
 }
 
 impl RunStore {
@@ -57,27 +57,37 @@ impl RunStore {
                     status, started_at, ended_at
              FROM workflow_runs WHERE session_id = ?",
         )?;
-        let row = stmt
-            .query_row(params![session_id], |row| {
-                let inputs_json: String = row.get(3)?;
-                let inputs: BTreeMap<String, serde_json::Value> =
-                    serde_json::from_str(&inputs_json).unwrap_or_default();
-                Ok(WorkflowRun {
-                    run_id: row.get(0)?,
-                    session_id: row.get(1)?,
-                    workflow_id: row.get(2)?,
-                    inputs,
-                    current_stage_id: row.get(4)?,
-                    status: str_to_run_status(&row.get::<_, String>(5)?),
-                    started_at: row.get(6)?,
-                    ended_at: row.get(7)?,
-                })
-            });
-        match row {
-            Ok(r) => Ok(Some(r)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+        type Row = (String, String, String, String, String, String, i64, Option<i64>);
+        let row: Result<Row, rusqlite::Error> = stmt.query_row(params![session_id], |r| {
+            Ok((
+                r.get(0)?,
+                r.get(1)?,
+                r.get(2)?,
+                r.get(3)?,
+                r.get(4)?,
+                r.get(5)?,
+                r.get(6)?,
+                r.get(7)?,
+            ))
+        });
+        let row = match row {
+            Ok(t) => t,
+            Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+            Err(e) => return Err(e.into()),
+        };
+
+        let inputs: BTreeMap<String, serde_json::Value> = serde_json::from_str(&row.3)?;
+
+        Ok(Some(WorkflowRun {
+            run_id: row.0,
+            session_id: row.1,
+            workflow_id: row.2,
+            inputs,
+            current_stage_id: row.4,
+            status: str_to_run_status(&row.5),
+            started_at: row.6,
+            ended_at: row.7,
+        }))
     }
 
     pub fn advance_run(&self, run_id: &str, new_stage_id: &str) -> Result<(), StoreError> {
@@ -199,5 +209,23 @@ mod tests {
         s.advance_run(&run.run_id, "b").unwrap();
         let back = s.load_by_session("s1").unwrap().unwrap();
         assert_eq!(back.current_stage_id, "b");
+    }
+
+    #[test]
+    fn corrupt_inputs_json_surfaces_as_err() {
+        let s = store();
+        let mut run = make_run("s1");
+        run.inputs.insert("x".into(), serde_json::Value::String("y".into()));
+        s.create_run(&run).unwrap();
+        // Manually corrupt the inputs_json column
+        {
+            let conn = s.conn.lock().unwrap();
+            conn.execute(
+                "UPDATE workflow_runs SET inputs_json = 'not json {{{' WHERE session_id = 's1'",
+                [],
+            ).unwrap();
+        }
+        let err = s.load_by_session("s1").unwrap_err();
+        assert!(matches!(err, StoreError::Json(_)), "expected Json error, got {err:?}");
     }
 }
