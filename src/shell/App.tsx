@@ -28,6 +28,7 @@ import { createWindowFocusExtension } from "../extensions/window-focus";
 import { createInactivitySwitchExtension } from "../extensions/inactivity-switch";
 import { createPolicyBadgeExtension } from "../extensions/policy-badge";
 import { createUpdateNotifierExtension } from "../extensions/update-notifier";
+import { createOrchestratorExtension } from "../extensions/orchestrator";
 
 /**
  * Kernel instances - created once and persisted for the app lifetime.
@@ -66,6 +67,7 @@ function useKernel() {
     extensionHost.register(createInactivitySwitchExtension());
     extensionHost.register(createPolicyBadgeExtension());
     extensionHost.register(createUpdateNotifierExtension());
+    extensionHost.register(createOrchestratorExtension());
 
     return {
       registry,
