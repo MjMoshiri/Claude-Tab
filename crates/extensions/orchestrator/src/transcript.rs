@@ -74,7 +74,8 @@ impl Tail {
             };
             out.push_str(&line);
             if out.len() > max_chars {
-                out.truncate(max_chars);
+                let cutoff = floor_char_boundary(&out, max_chars);
+                out.truncate(cutoff);
                 out.push_str("\n[...truncated]");
                 break;
             }
@@ -189,5 +190,22 @@ mod tests {
         ]);
         let tail = Tail::read(f.path(), 10).unwrap();
         assert_eq!(tail.last_assistant_text().as_deref(), Some("latest"));
+    }
+
+    #[test]
+    fn compact_repr_does_not_panic_on_multibyte_boundary() {
+        // Build a transcript whose user message is mostly emoji so the
+        // accumulated `out` exceeds max_chars at a byte index that
+        // straddles a multi-byte codepoint. The naïve String::truncate
+        // would panic; the floor_char_boundary path must succeed.
+        let f = write_jsonl(&[r#"{"type":"user","content":"🦀🦀🦀🦀🦀🦀🦀🦀🦀🦀"}"#]);
+        let tail = Tail::read(f.path(), 10).unwrap();
+        // 10 emoji * 4 bytes + "[user] " prefix far exceeds 10 bytes;
+        // cut lands mid-emoji.
+        let out = tail.compact_repr(10);
+        assert!(out.contains("[...truncated]"), "got: {out:?}");
+        // Must not panic and must produce valid UTF-8 (already true by
+        // virtue of String, but assert the truncation actually shortened).
+        assert!(out.len() < 1000, "got: {out:?}");
     }
 }
