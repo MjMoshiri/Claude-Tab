@@ -96,13 +96,13 @@ pub fn create_orchestrator_future(
     let auth = Arc::new(LocalAuth::generate(cfg_dir)?);
 
     let injector = Arc::new(Injector::new(pty_manager));
-    let dispatcher = Arc::new(Dispatcher {
+    let dispatcher = Arc::new(Dispatcher::new(
         registry,
         store,
-        judge: Arc::new(ClaudeCli),
+        Arc::new(ClaudeCli),
         injector,
-        counter: Arc::new(AdvanceCounter::new()),
-    });
+        Arc::new(AdvanceCounter::new()),
+    ));
 
     let dispatcher_for_serve = dispatcher.clone();
     let auth_for_serve = auth.clone();

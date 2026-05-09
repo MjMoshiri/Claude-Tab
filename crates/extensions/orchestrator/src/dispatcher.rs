@@ -7,9 +7,11 @@ use crate::runtime::store::{RunStore, StoreError};
 use crate::transcript::Tail;
 use crate::workflow::ir::{Completion, Notes, SessionEventKind, Workflow};
 use crate::workflow::registry::WorkflowRegistry;
+use std::collections::HashMap;
 use std::path::Path;
 use std::sync::Arc;
 use thiserror::Error;
+use tokio::sync::Mutex as AsyncMutex;
 use tracing::info;
 
 #[derive(Debug, Error)]
@@ -28,6 +30,8 @@ pub enum DispatchError {
     NoRun(String),
     #[error("workflow `{0}` not registered")]
     UnknownWorkflow(String),
+    #[error("stage `{0}` not found in workflow `{1}` (registry changed mid-run?)")]
+    UnknownStage(String, String),
 }
 
 pub struct Dispatcher {
@@ -36,6 +40,36 @@ pub struct Dispatcher {
     pub judge: Arc<dyn JudgeRunner>,
     pub injector: Arc<Injector>,
     pub counter: Arc<AdvanceCounter>,
+    /// Per-session async lock. Serializes `on_turn_end` / `on_session_start`
+    /// / `do_inject` for a given session so concurrent HTTP requests can't
+    /// double-advance, double-inject, or interleave DB+PTY writes.
+    session_locks: AsyncMutex<HashMap<String, Arc<AsyncMutex<()>>>>,
+}
+
+impl Dispatcher {
+    pub fn new(
+        registry: Arc<WorkflowRegistry>,
+        store: Arc<RunStore>,
+        judge: Arc<dyn JudgeRunner>,
+        injector: Arc<Injector>,
+        counter: Arc<AdvanceCounter>,
+    ) -> Self {
+        Self {
+            registry,
+            store,
+            judge,
+            injector,
+            counter,
+            session_locks: AsyncMutex::new(HashMap::new()),
+        }
+    }
+
+    async fn session_lock(&self, session_id: &str) -> Arc<AsyncMutex<()>> {
+        let mut map = self.session_locks.lock().await;
+        map.entry(session_id.to_string())
+            .or_insert_with(|| Arc::new(AsyncMutex::new(())))
+            .clone()
+    }
 }
 
 impl Dispatcher {
@@ -44,6 +78,9 @@ impl Dispatcher {
         session_id: &str,
         transcript_path: &Path,
     ) -> Result<(), DispatchError> {
+        let lock = self.session_lock(session_id).await;
+        let _guard = lock.lock().await;
+
         let run = self
             .store
             .load_by_session(session_id)?
@@ -58,7 +95,12 @@ impl Dispatcher {
         let stage = workflow
             .stages
             .get(&run.current_stage_id)
-            .expect("stage exists; compiler validated")
+            .ok_or_else(|| {
+                DispatchError::UnknownStage(
+                    run.current_stage_id.clone(),
+                    run.workflow_id.clone(),
+                )
+            })?
             .clone();
 
         let tail = Tail::read(transcript_path, 80).unwrap_or(Tail { entries: vec![] });
@@ -101,9 +143,15 @@ impl Dispatcher {
         session_id: &str,
         source: &str,
     ) -> Result<(), DispatchError> {
+        let lock = self.session_lock(session_id).await;
+        let _guard = lock.lock().await;
+
         let Some(run) = self.store.load_by_session(session_id)? else {
             return Ok(());
         };
+        if run.status != RunStatus::Running {
+            return Ok(());
+        }
         if source != "compact" {
             return Ok(());
         }
@@ -114,7 +162,12 @@ impl Dispatcher {
         let stage = workflow
             .stages
             .get(&run.current_stage_id)
-            .expect("validated")
+            .ok_or_else(|| {
+                DispatchError::UnknownStage(
+                    run.current_stage_id.clone(),
+                    run.workflow_id.clone(),
+                )
+            })?
             .clone();
 
         if let Completion::SessionEvent { on } = &stage.completion {
@@ -145,8 +198,19 @@ impl Dispatcher {
         let next_stage = workflow
             .stages
             .get(next_stage_id)
-            .expect("validated")
+            .ok_or_else(|| {
+                DispatchError::UnknownStage(next_stage_id.into(), run.workflow_id.clone())
+            })?
             .clone();
+
+        // Pre-check: bail before any DB advance if the PTY is already gone.
+        // Shrinks the window where we'd commit an advance the user can never
+        // see typed (the txn-hole reviewer flagged dispatcher.rs:154-161).
+        if !self.injector.is_alive(&run.session_id) {
+            return Err(DispatchError::Inject(
+                crate::injector::InjectError::NotFound(run.session_id.clone()),
+            ));
+        }
 
         let notes = if let Notes::Dynamic { hint } = &next_stage.notes {
             Some(draft_notes(&*self.judge, &workflow.model, hint, run, tail).await?)
@@ -163,8 +227,13 @@ impl Dispatcher {
             next_stage = %next_stage_id,
             "injecting next stage"
         );
-        self.injector
-            .write_user_prompt(&run.session_id, &rendered)?;
+        // If the PTY write fails after we've advanced the DB, mark the run as
+        // Error so the UI surfaces the inconsistency rather than silently
+        // leaving the user on a stage whose prompt was never typed.
+        if let Err(e) = self.injector.write_user_prompt(&run.session_id, &rendered) {
+            let _ = self.store.set_status(&run.run_id, RunStatus::Error);
+            return Err(e.into());
+        }
         Ok(())
     }
 }

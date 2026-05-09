@@ -6,6 +6,27 @@ use std::sync::Arc;
 
 pub type AppState = Arc<Dispatcher>;
 
+/// Validate a transcript path supplied by an HTTP client.
+/// Even with token auth, treat the path as untrusted: refuse anything that
+/// canonicalizes outside `~/.claude/projects/` so a token leak can't read
+/// arbitrary files. Also requires a `.jsonl` extension.
+fn validate_transcript_path(raw: &str) -> Result<PathBuf, &'static str> {
+    let path = PathBuf::from(raw);
+    if path.extension().and_then(|s| s.to_str()) != Some("jsonl") {
+        return Err("transcript_path must be a .jsonl file");
+    }
+    let canonical = path.canonicalize().map_err(|_| "transcript_path does not exist")?;
+    let home = std::env::var("HOME").map_err(|_| "no HOME env")?;
+    let projects_root = PathBuf::from(home).join(".claude").join("projects");
+    let projects_root = projects_root
+        .canonicalize()
+        .map_err(|_| "claude projects dir missing")?;
+    if !canonical.starts_with(&projects_root) {
+        return Err("transcript_path outside ~/.claude/projects");
+    }
+    Ok(canonical)
+}
+
 #[derive(Deserialize)]
 pub struct TurnEnd {
     pub session_id: String,
@@ -13,7 +34,14 @@ pub struct TurnEnd {
 }
 
 pub async fn turn_end(State(d): State<AppState>, Json(p): Json<TurnEnd>) -> impl IntoResponse {
-    if let Err(e) = d.on_turn_end(&p.session_id, &PathBuf::from(p.transcript_path)).await {
+    let path = match validate_transcript_path(&p.transcript_path) {
+        Ok(p) => p,
+        Err(reason) => {
+            tracing::warn!(transcript_path = %p.transcript_path, "rejected transcript_path: {reason}");
+            return StatusCode::BAD_REQUEST;
+        }
+    };
+    if let Err(e) = d.on_turn_end(&p.session_id, &path).await {
         tracing::warn!("turn_end error: {e}");
     }
     StatusCode::NO_CONTENT

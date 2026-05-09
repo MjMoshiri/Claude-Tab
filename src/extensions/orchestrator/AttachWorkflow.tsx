@@ -16,11 +16,28 @@ export function AttachWorkflow({ sessionId, onClose }: Props) {
       .catch((e) => setLoadErr(String(e)));
   }, []);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   return (
     <div style={modalBackdrop} onClick={onClose}>
-      <div style={modalBody} onClick={(e) => e.stopPropagation()}>
+      <div
+        style={modalBody}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="attach-workflow-title"
+        onClick={(e) => e.stopPropagation()}
+      >
         <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h3 style={{ margin: 0 }}>Attach workflow to session</h3>
+          <h3 id="attach-workflow-title" style={{ margin: 0 }}>Attach workflow to session</h3>
           <button onClick={onClose} aria-label="Close" style={{ fontSize: 20 }}>×</button>
         </header>
         <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 12 }}>
