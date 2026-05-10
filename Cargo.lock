@@ -359,7 +359,7 @@ dependencies = [
 
 [[package]]
 name = "claude-tabs-app"
-version = "1.4.4"
+version = "1.4.5"
 dependencies = [
  "claude-tabs-core",
  "claude-tabs-ext-auto-switch",

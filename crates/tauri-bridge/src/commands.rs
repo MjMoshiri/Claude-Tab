@@ -42,6 +42,59 @@ fn remove_policy_file(session_id: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Validate and normalize a user-supplied working directory.
+///
+/// Expands a leading `~`, requires an absolute path, and checks that the
+/// path is an existing directory. Returns the canonical path as a string.
+///
+/// Without this check, an invalid `cwd` makes the post-fork child abort
+/// inside `chdir`, taking the process down with SIGABRT (crash report
+/// shows "crashed on child side of fork pre-exec").
+fn resolve_working_dir(dir: &str) -> Result<String, CommandError> {
+    let trimmed = dir.trim();
+    if trimmed.is_empty() {
+        return Err(CommandError::Internal(
+            "Working directory is empty".to_string(),
+        ));
+    }
+
+    let expanded: PathBuf = if let Some(rest) = trimmed.strip_prefix("~") {
+        let home = std::env::var("HOME")
+            .map_err(|_| CommandError::Internal("HOME env var not set".to_string()))?;
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        if rest.is_empty() {
+            PathBuf::from(home)
+        } else {
+            PathBuf::from(home).join(rest)
+        }
+    } else {
+        PathBuf::from(trimmed)
+    };
+
+    if !expanded.is_absolute() {
+        return Err(CommandError::Internal(format!(
+            "Working directory must be an absolute path: {}",
+            trimmed
+        )));
+    }
+
+    let canonical = expanded.canonicalize().map_err(|e| {
+        CommandError::Internal(format!(
+            "Working directory does not exist: {} ({})",
+            trimmed, e
+        ))
+    })?;
+
+    if !canonical.is_dir() {
+        return Err(CommandError::Internal(format!(
+            "Working directory is not a directory: {}",
+            canonical.display()
+        )));
+    }
+
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
 #[derive(Debug, thiserror::Error, Serialize)]
 pub enum CommandError {
     #[error("Session not found: {0}")]
@@ -188,6 +241,12 @@ pub async fn create_session(
 ) -> Result<SessionInfo, CommandError> {
     info!(provider_id = %request.provider_id, "Creating session");
 
+    let mut request = request;
+    if let Some(dir) = request.working_directory.as_ref() {
+        let resolved = resolve_working_dir(dir)?;
+        request.working_directory = Some(resolved);
+    }
+
     let mut session = Session::new(&request.provider_id);
     if let Some(title) = &request.title {
         session.title = title.clone();
@@ -242,7 +301,6 @@ pub async fn create_session(
     }
 
     // Handle system_prompt_file: read content and set as system_prompt
-    let mut request = request;
     if request.system_prompt.is_none() {
         if let Some(ref file_name) = request.system_prompt_file {
             match profile::read_system_prompt_content(file_name) {
