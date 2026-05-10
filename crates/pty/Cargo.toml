@@ -17,3 +17,4 @@ tracing = { workspace = true }
 portable-pty = { workspace = true }
 parking_lot = "0.12"
 bytes = "1"
+libc = "0.2"
