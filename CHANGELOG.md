@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.4.9] - 2026-05-13
+
+### Fixed
+- **PTY spawned at 24×80 → resize repaint**: New sessions used a hardcoded 24×80 initial PTY size, then resized after the first ResizeObserver fired. Claude Code repainted twice, causing scrollback duplication and flicker on window resize. Backend now caches the last reported terminal grid size in `AppState` and uses it as the initial PTY size for new sessions.
+- **ResizeObserver IPC spam on window drag**: Container ResizeObserver now debounces 40ms trailing with a delta check, coalescing per-frame resize events.
+
+### Added
+- **`report_terminal_size` command**: Frontend reports estimated grid dimensions before any terminal exists, so the first session also spawns at the correct size.
+
+## [1.4.8] - 2026-05-10
+
+### Fixed
+- **`claude` CLI not found in bundled app**: PTY children are now spawned via `posix_spawn` with an explicit PATH lookup, so app-bundle launches (macOS) can locate CLIs installed in shell-configured paths like `/opt/homebrew/bin`.
+
+## [1.4.6] - 2026-05-10
+
+### Fixed
+- **Crash when spawning into a missing directory**: `working_directory` is now validated before PTY spawn instead of failing inside the child process.
+
+### Changed
+- Project relicensed under AGPL-3.0-or-later.
+
+## [1.4.5] - 2026-04-14
+
+### Changed
+- **Simplified Telegram `/rc` URL capture**: Claude Code now enables remote control by default and prints the URL in its startup banner. The Telegram bot extension subscribes to PTY output before `start_reading` and watches for the URL, eliminating the `/remote-control` injection, prompt dismissal, and `SessionStart` hook dependency.
+
 ## [1.4.4] - 2026-04-13
 
 ### Added
