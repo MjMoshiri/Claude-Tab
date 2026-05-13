@@ -314,7 +314,11 @@ pub async fn create_session(
         }
     }
 
-    let size = PtySize { rows: 24, cols: 80 };
+    let size = state
+        .last_grid_size
+        .lock()
+        .map(|g| *g)
+        .unwrap_or_default();
 
     let command = if request.provider_id == "claude-code" {
         "claude"
@@ -601,9 +605,30 @@ pub fn resize_pty(
     cols: u16,
 ) -> Result<(), CommandError> {
     let size = PtySize { rows, cols };
+    if let Ok(mut g) = state.last_grid_size.lock() {
+        *g = size;
+    }
     state
         .pty_manager
         .resize(&session_id, size)?;
+    Ok(())
+}
+
+/// Update the cached terminal grid size used as the initial PTY size for
+/// newly-spawned sessions. Called by the frontend ResizeObserver so the
+/// first session created after a window resize spawns at the right dims.
+#[tauri::command]
+pub fn report_terminal_size(
+    state: State<'_, AppState>,
+    rows: u16,
+    cols: u16,
+) -> Result<(), CommandError> {
+    if rows == 0 || cols == 0 {
+        return Ok(());
+    }
+    if let Ok(mut g) = state.last_grid_size.lock() {
+        *g = PtySize { rows, cols };
+    }
     Ok(())
 }
 

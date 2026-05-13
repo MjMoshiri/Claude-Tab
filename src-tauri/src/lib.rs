@@ -111,6 +111,7 @@ pub fn run() {
         pack_store: pack_store.clone(),
         state_machine: state_machine.clone(),
         skill_manager: skill_manager.clone(),
+        last_grid_size: Arc::new(std::sync::Mutex::new(Default::default())),
     };
 
     tauri::Builder::default()
@@ -131,6 +132,7 @@ pub fn run() {
             commands::rename_session,
             commands::write_to_pty,
             commands::resize_pty,
+            commands::report_terminal_size,
             commands::submit_input,
             commands::get_config_value,
             commands::set_config_value,
