@@ -1,5 +1,9 @@
 # Claude Tabs
 
+> **Archived — Nov 2025 to May 2026.** No longer maintained.
+>
+> Multiple teams, including Anthropic themselves, are now shipping very similar tools. Roughly 85% of what this app does is available elsewhere, so continuing to maintain it is no longer a good use of my time. I'm pausing this to build proficiency in other areas. The code remains available under AGPL-3.0 — fork freely.
+
 A tab-based terminal manager for running multiple [Claude Code](https://docs.anthropic.com/en/docs/claude-code) sessions in parallel. Built with Tauri 2, React, and Rust.
 
 ## Demo

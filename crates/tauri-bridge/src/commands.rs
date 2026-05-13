@@ -314,11 +314,7 @@ pub async fn create_session(
         }
     }
 
-    let size = state
-        .last_grid_size
-        .lock()
-        .map(|g| *g)
-        .unwrap_or_default();
+    let size = PtySize::default();
 
     let command = if request.provider_id == "claude-code" {
         "claude"
@@ -328,6 +324,13 @@ pub async fn create_session(
 
     let args: Vec<String> = if request.provider_id == "claude-code" {
         let mut a = Vec::new();
+        // Force Claude Code into fullscreen TUI so it paints the full viewport.
+        // Without this, CC defaults to inline rendering which leaves blank rows
+        // below the cursor (visible as a large empty band after window resizes).
+        // `--settings` accepts inline JSON and overrides keys for this session
+        // only, leaving the user's ~/.claude/settings.json untouched.
+        a.push("--settings".to_string());
+        a.push(r#"{"tui":"fullscreen"}"#.to_string());
         if let Some(ref id) = request.resume_claude_session_id {
             a.push("--resume".to_string());
             a.push(id.clone());
@@ -605,30 +608,9 @@ pub fn resize_pty(
     cols: u16,
 ) -> Result<(), CommandError> {
     let size = PtySize { rows, cols };
-    if let Ok(mut g) = state.last_grid_size.lock() {
-        *g = size;
-    }
     state
         .pty_manager
         .resize(&session_id, size)?;
-    Ok(())
-}
-
-/// Update the cached terminal grid size used as the initial PTY size for
-/// newly-spawned sessions. Called by the frontend ResizeObserver so the
-/// first session created after a window resize spawns at the right dims.
-#[tauri::command]
-pub fn report_terminal_size(
-    state: State<'_, AppState>,
-    rows: u16,
-    cols: u16,
-) -> Result<(), CommandError> {
-    if rows == 0 || cols == 0 {
-        return Ok(());
-    }
-    if let Ok(mut g) = state.last_grid_size.lock() {
-        *g = PtySize { rows, cols };
-    }
     Ok(())
 }
 

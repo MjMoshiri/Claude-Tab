@@ -5,10 +5,9 @@ use claude_tabs_core::profile::{ProfileStore, PackStore};
 use claude_tabs_core::session::SessionStore;
 use claude_tabs_core::skills::SkillManager;
 use claude_tabs_core::state_machine::StateMachine;
-use claude_tabs_core::traits::provider::PtySize;
 use claude_tabs_pty::{OutputStream, PtyManager};
 use claude_tabs_storage::StorageBackend;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use tracing::debug;
 
@@ -23,10 +22,6 @@ pub struct AppState {
     pub pack_store: Arc<PackStore>,
     pub state_machine: Arc<StateMachine>,
     pub skill_manager: Arc<SkillManager>,
-    /// Latest cols/rows reported by the foreground terminal grid.
-    /// Used as the initial PTY size for new sessions so Claude Code's
-    /// first paint matches the visible viewport (no post-spawn resize repaint).
-    pub last_grid_size: Arc<Mutex<PtySize>>,
 }
 
 pub struct IpcBridge {

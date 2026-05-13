@@ -143,46 +143,33 @@ function TerminalPanel() {
   }, [activeId, keybindingManager]);
 
   // Single ResizeObserver on the container — only resizes the active terminal.
-  // Debounced 40ms to coalesce window-drag spam. When no terminal is mounted
-  // yet, we still report an estimated grid size so the first session spawns
-  // at the correct dimensions (avoids Claude Code's post-spawn resize repaint).
+  // Debounced 40ms to coalesce window-drag spam.
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Approx cell size at fontSize:14 / monospace — only used pre-first-fit.
-    const CELL_W = 8.4;
-    const CELL_H = 17;
     let pending: number | null = null;
-    let lastReported = { rows: 0, cols: 0 };
 
-    const flush = (width: number, height: number) => {
+    const flush = () => {
       const id = activeIdRef.current;
-      const inst = id ? instancesRef.current.get(id) : undefined;
-      if (inst) {
-        inst.fit(); // also caches size backend-side via resize_pty
-        return;
-      }
-      const cols = Math.max(20, Math.floor(width / CELL_W));
-      const rows = Math.max(5, Math.floor(height / CELL_H));
-      if (rows === lastReported.rows && cols === lastReported.cols) return;
-      lastReported = { rows, cols };
-      invoke("report_terminal_size", { rows, cols }).catch(() => {});
+      if (id) instancesRef.current.get(id)?.fit();
     };
 
-    const observer = new ResizeObserver((entries) => {
-      const { width, height } = entries[0].contentRect;
-      if (width === 0 || height === 0) return;
+    const schedule = () => {
       if (pending !== null) window.clearTimeout(pending);
       pending = window.setTimeout(() => {
         pending = null;
-        flush(width, height);
+        flush();
       }, 40);
-    });
+    };
 
+    const observer = new ResizeObserver(schedule);
     observer.observe(containerRef.current);
+    window.addEventListener("resize", schedule);
+
     return () => {
       if (pending !== null) window.clearTimeout(pending);
       observer.disconnect();
+      window.removeEventListener("resize", schedule);
     };
   }, []);
 

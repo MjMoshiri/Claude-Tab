@@ -69,7 +69,9 @@ export class TerminalInstance {
 
     // Open into wrapper — may be detached from DOM, buffer still works
     this.terminal.open(this.element);
-    this.loadWebGL();
+    // WebGL renderer disabled — has known repaint bugs on grid grow.
+    // Default canvas renderer handles resize correctly.
+    // this.loadWebGL();
 
     // Intercept app keybindings before xterm processes them
     this.terminal.attachCustomKeyEventHandler((e: KeyboardEvent) => {
@@ -162,10 +164,34 @@ export class TerminalInstance {
     const prevRows = this.terminal.rows;
     const prevCols = this.terminal.cols;
 
+    // FitAddon measures `terminal.element.parentElement` (our wrapper).
+    // Check proposed dims first — if the parent isn't measurable yet (layout
+    // not settled, e.g. mid-resize), retry next frame instead of locking in
+    // a stale/min grid that won't grow back on subsequent fits.
+    // Bail-and-retry when the parent isn't measurable yet (mid-resize layout).
+    // Without this, fit() can lock the grid at a min size that won't grow back.
+    const proposed = this.fitAddon.proposeDimensions();
+    const parent = this.terminal.element?.parentElement;
+    const pw = parent?.clientWidth ?? 0;
+    const ph = parent?.clientHeight ?? 0;
+    if (!proposed || proposed.cols < 10 || proposed.rows < 5 || pw === 0 || ph === 0) {
+      requestAnimationFrame(() => this.fit());
+      return;
+    }
+
     this.fitAddon.fit();
 
-    // Only resize PTY if dimensions actually changed — avoids unnecessary SIGWINCH
-    if (this.terminal.rows !== prevRows || this.terminal.cols !== prevCols) {
+    const changed =
+      this.terminal.rows !== prevRows || this.terminal.cols !== prevCols;
+
+    if (changed) {
+      // Force renderer to repaint the full grid at the new size — without this,
+      // WebGL/canvas can keep stale tiles around the previous edges on grow.
+      if (typeof (this.terminal as any).clearTextureAtlas === "function") {
+        (this.terminal as any).clearTextureAtlas();
+      }
+      this.terminal.refresh(0, this.terminal.rows - 1);
+
       invoke("resize_pty", {
         sessionId: this.sessionId,
         rows: this.terminal.rows,
@@ -186,12 +212,6 @@ export class TerminalInstance {
       if (this.disposed) return;
 
       this.fit();
-
-      // Reload WebGL if context was lost while detached
-      if (!this.webglAddon) this.loadWebGL();
-      if (typeof (this.terminal as any).clearTextureAtlas === "function") {
-        (this.terminal as any).clearTextureAtlas();
-      }
 
       // Redraw all visible rows from buffer
       this.terminal.refresh(0, this.terminal.rows - 1);
